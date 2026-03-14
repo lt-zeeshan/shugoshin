@@ -1,0 +1,41 @@
+{
+  "type": "object",
+  "required": ["verdict", "summary", "affected_areas", "reasoning", "intent_match"],
+  "additionalProperties": false,
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["SAFE", "REVIEW_NEEDED", "HIGH_RISK", "TIMEOUT", "ERROR"]
+    },
+    "summary": {
+      "type": "string",
+      "description": "One sentence summary of the finding"
+    },
+    "affected_areas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["symbol", "locations", "risk"],
+        "properties": {
+          "symbol": { "type": "string" },
+          "locations": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "risk": {
+            "type": "string",
+            "enum": ["LOW", "MEDIUM", "HIGH"]
+          }
+        }
+      }
+    },
+    "intent_match": {
+      "type": "boolean",
+      "description": "Whether the changes appear to match the stated task intent"
+    },
+    "reasoning": {
+      "type": "string",
+      "description": "Full explanation of the blast radius analysis"
+    }
+  }
+}

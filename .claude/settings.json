@@ -1,0 +1,38 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "_shugoshin": true,
+        "hooks": [
+          {
+            "command": "shugoshin hook posttool",
+            "type": "command"
+          }
+        ],
+        "matcher": "Edit|Write|MultiEdit"
+      }
+    ],
+    "Stop": [
+      {
+        "_shugoshin": true,
+        "hooks": [
+          {
+            "command": "shugoshin hook stop",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "_shugoshin": true,
+        "hooks": [
+          {
+            "command": "shugoshin hook submit",
+            "type": "command"
+          }
+        ]
+      }
+    ]
+  }
+}

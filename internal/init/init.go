@@ -55,6 +55,12 @@ func Init(projectRoot string) error {
 	logger.Info("added %s to .gitignore", gitignoreEntry)
 	fmt.Println("Added .shugoshin/state/ to .gitignore")
 
+	if err := codex.SetupLeanHome(); err != nil {
+		return fmt.Errorf("setting up codex home: %w", err)
+	}
+	logger.Info("created lean codex home at %s", codex.LeanHomePath())
+	fmt.Printf("Created lean Codex home at %s (no MCP servers)\n", codex.LeanHomePath())
+
 	logger.Info("init complete")
 	fmt.Println("Shugoshin initialised successfully.")
 	return nil

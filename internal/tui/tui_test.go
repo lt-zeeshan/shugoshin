@@ -51,7 +51,7 @@ func baseModel() Model {
 }
 
 // ---------------------------------------------------------------------------
-// Cursor navigation
+// Cursor navigation (list mode — not expanded)
 // ---------------------------------------------------------------------------
 
 func TestCursorNavigation(t *testing.T) {
@@ -106,22 +106,74 @@ func TestCursorNavigation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			m := baseModel()
 			for _, key := range tt.keys {
-				var msg tea.KeyMsg
-				switch key {
-				case "up":
-					msg = tea.KeyMsg{Type: tea.KeyUp}
-				case "down":
-					msg = tea.KeyMsg{Type: tea.KeyDown}
-				default:
-					msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)}
-				}
-				updated, _ := m.Update(msg)
+				updated, _ := m.Update(keyMsg(key))
 				m = updated.(Model)
 			}
 			if m.cursor != tt.wantCursor {
 				t.Errorf("cursor = %d, want %d", m.cursor, tt.wantCursor)
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Detail scroll (expanded mode)
+// ---------------------------------------------------------------------------
+
+func TestDetailScroll(t *testing.T) {
+	tests := []struct {
+		name       string
+		keys       []string
+		wantScroll int
+	}{
+		{
+			name:       "down scrolls detail pane",
+			keys:       []string{"enter", "down"},
+			wantScroll: 1,
+		},
+		{
+			name:       "down down scrolls to 2",
+			keys:       []string{"enter", "down", "down"},
+			wantScroll: 2,
+		},
+		{
+			name:       "up at 0 stays at 0",
+			keys:       []string{"enter", "up"},
+			wantScroll: 0,
+		},
+		{
+			name:       "down then up returns to 0",
+			keys:       []string{"enter", "down", "up"},
+			wantScroll: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := baseModel()
+			for _, key := range tt.keys {
+				updated, _ := m.Update(keyMsg(key))
+				m = updated.(Model)
+			}
+			if m.detailScroll != tt.wantScroll {
+				t.Errorf("detailScroll = %d, want %d", m.detailScroll, tt.wantScroll)
+			}
+		})
+	}
+}
+
+func keyMsg(key string) tea.KeyMsg {
+	switch key {
+	case "up":
+		return tea.KeyMsg{Type: tea.KeyUp}
+	case "down":
+		return tea.KeyMsg{Type: tea.KeyDown}
+	case "enter":
+		return tea.KeyMsg{Type: tea.KeyEnter}
+	case "esc":
+		return tea.KeyMsg{Type: tea.KeyEscape}
+	default:
+		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)}
 	}
 }
 
@@ -144,11 +196,73 @@ func TestEnterTogglesExpanded(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			m := baseModel()
 			for i := 0; i < tt.presses; i++ {
-				updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+				updated, _ := m.Update(keyMsg("enter"))
 				m = updated.(Model)
 			}
 			if m.expanded != tt.wantExpanded {
 				t.Errorf("expanded = %v, want %v", m.expanded, tt.wantExpanded)
+			}
+		})
+	}
+}
+
+func TestEscClosesDetail(t *testing.T) {
+	m := baseModel()
+	updated, _ := m.Update(keyMsg("enter"))
+	m = updated.(Model)
+	if !m.expanded {
+		t.Fatal("should be expanded after enter")
+	}
+	updated, _ = m.Update(keyMsg("esc"))
+	m = updated.(Model)
+	if m.expanded {
+		t.Error("should be collapsed after esc")
+	}
+}
+
+func TestWordWrap(t *testing.T) {
+	tests := []struct {
+		name  string
+		text  string
+		width int
+		want  []string
+	}{
+		{
+			name:  "short text no wrap",
+			text:  "hello world",
+			width: 20,
+			want:  []string{"hello world"},
+		},
+		{
+			name:  "wraps at word boundary",
+			text:  "the quick brown fox jumps over",
+			width: 15,
+			want:  []string{"the quick brown", "fox jumps over"},
+		},
+		{
+			name:  "preserves newlines",
+			text:  "line one\nline two",
+			width: 50,
+			want:  []string{"line one", "line two"},
+		},
+		{
+			name:  "empty text",
+			text:  "",
+			width: 20,
+			want:  []string{""},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := wordWrap(tt.text, tt.width)
+			if len(got) != len(tt.want) {
+				t.Fatalf("wordWrap() returned %d lines, want %d: %v", len(got), len(tt.want), got)
+			}
+			for i := range tt.want {
+				if got[i] != tt.want[i] {
+					t.Errorf("line[%d] = %q, want %q", i, got[i], tt.want[i])
+				}
 			}
 		})
 	}
@@ -415,3 +529,4 @@ func TestUniqueSessions(t *testing.T) {
 		})
 	}
 }
+

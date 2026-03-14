@@ -19,14 +19,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case reportsLoadedMsg:
 		if msg.err != nil {
-			// Keep the existing state on error — a future reload might succeed.
 			return m, nil
 		}
 		m.reports = msg.reports
 		m.sessions = uniqueSessions(msg.reports)
-		// Reset navigation on reload.
 		m.cursor = 0
 		m.expanded = false
+		m.detailScroll = 0
 		applyFilters(&m)
 		return m, nil
 
@@ -41,24 +40,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func handleKey(m Model, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "up", "k":
-		if m.cursor > 0 {
-			m.cursor--
-			m.expanded = false
+		if m.expanded {
+			// Scroll detail pane up.
+			if m.detailScroll > 0 {
+				m.detailScroll--
+			}
+		} else {
+			if m.cursor > 0 {
+				m.cursor--
+			}
 		}
 
 	case "down", "j":
-		if m.cursor < len(m.filtered)-1 {
-			m.cursor++
-			m.expanded = false
+		if m.expanded {
+			// Scroll detail pane down (clamped in view rendering).
+			m.detailScroll++
+		} else {
+			if m.cursor < len(m.filtered)-1 {
+				m.cursor++
+			}
 		}
 
 	case "enter":
 		if len(m.filtered) > 0 {
 			m.expanded = !m.expanded
+			m.detailScroll = 0
+		}
+
+	case "esc":
+		if m.expanded {
+			m.expanded = false
+			m.detailScroll = 0
 		}
 
 	case "s":
-		// Cycle: all → session[0] → session[1] → … → all
 		if len(m.sessions) == 0 {
 			break
 		}
@@ -70,10 +85,10 @@ func handleKey(m Model, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.cursor = 0
 		m.expanded = false
+		m.detailScroll = 0
 		applyFilters(&m)
 
 	case "f":
-		// Cycle: ALL → HIGH_RISK → REVIEW_NEEDED+ → ALL
 		next := ""
 		for i, v := range verdictFilterCycle {
 			if v == m.verdictFilter {
@@ -84,10 +99,12 @@ func handleKey(m Model, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.verdictFilter = next
 		m.cursor = 0
 		m.expanded = false
+		m.detailScroll = 0
 		applyFilters(&m)
 
 	case "r":
 		m.expanded = false
+		m.detailScroll = 0
 		return m, func() tea.Msg {
 			reports, err := m.loadReports(m.baseDir)
 			return reportsLoadedMsg{reports: reports, err: err}
@@ -115,7 +132,6 @@ func applyFilters(m *Model) {
 	}
 	m.filtered = out
 
-	// Clamp cursor.
 	if m.cursor >= len(m.filtered) {
 		if len(m.filtered) > 0 {
 			m.cursor = len(m.filtered) - 1

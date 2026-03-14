@@ -99,7 +99,7 @@ func hookCmd() *cobra.Command {
 		Short: "Claude Code hook sub-commands (internal use)",
 	}
 
-	hook.AddCommand(hookSubmitCmd(), hookPostToolCmd(), hookStopCmd())
+	hook.AddCommand(hookSubmitCmd(), hookPostToolCmd(), hookStopCmd(), hookAnalyseCmd())
 	return hook
 }
 
@@ -139,6 +139,22 @@ func hookStopCmd() *cobra.Command {
 			defer logger.Close()
 			if err := hooks.HandleStop(os.Stdin, codex.RealExecutor{}); err != nil {
 				fmt.Fprintf(os.Stderr, "shugoshin hook stop: %v\n", err)
+			}
+			os.Exit(0)
+		},
+	}
+}
+
+func hookAnalyseCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:    "analyse [request-file]",
+		Short:  "Run background Codex analysis (internal use)",
+		Args:   cobra.ExactArgs(1),
+		Hidden: true,
+		Run: func(cmd *cobra.Command, args []string) {
+			defer logger.Close()
+			if err := hooks.HandleAnalyse(args[0], codex.RealExecutor{}); err != nil {
+				fmt.Fprintf(os.Stderr, "shugoshin hook analyse: %v\n", err)
 			}
 			os.Exit(0)
 		},

@@ -23,6 +23,7 @@ type Model struct {
 	filtered      []*types.Report
 	cursor        int
 	expanded      bool
+	detailScroll  int // scroll offset within detail pane
 	verdictFilter string // "" = ALL, "HIGH_RISK", "REVIEW_NEEDED+"
 	sessionFilter string // "" = all sessions
 	sessions      []string

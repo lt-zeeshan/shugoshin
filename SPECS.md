@@ -283,23 +283,17 @@ After a Stop event is processed, `current_intent` and `current_changes` are clea
 ```bash
 codex exec \
   --ephemeral \
-  --profile shugoshin \
-  --approval-policy never \
+  -c disable_mcp=true \
+  --full-auto \
   --output-schema .shugoshin/schemas/verdict.json \
   "{prompt}"
 ```
 
-### Codex Profile
-
-Shugoshin uses a dedicated `[profile.shugoshin]` in `~/.codex/config.toml` with `disable_mcp = true`. This skips MCP server startup (which can add several seconds) since blast radius analysis only needs file reading and code search — capabilities Codex has natively. Users keep their MCP servers for normal interactive Codex usage.
-
-`shugoshin init` should add this profile to `~/.codex/config.toml` if not already present.
-
 ### Guardrails for Codex
 
 - `--ephemeral` — no session state persists between analyses
-- `--profile shugoshin` — uses the bare profile with MCP servers disabled for fast startup
-- `--approval-policy never` — Codex must not pause and wait for human input; this runs in an automated hook context
+- `-c disable_mcp=true` — disables MCP server startup for fast execution (users keep MCP servers for normal Codex usage)
+- `--full-auto` — Codex must not pause and wait for human input; this runs in an automated hook context
 - `--output-schema` — forces structured JSON output matching the verdict schema
 - Codex runs in read-only mode by default (`codex exec` defaults to read-only sandbox) — it must NOT modify any files
 - The prompt explicitly instructs Codex to only read and analyse, never write or execute commands

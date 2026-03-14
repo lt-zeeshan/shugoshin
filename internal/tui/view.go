@@ -44,23 +44,27 @@ var (
 // View entry point
 // ---------------------------------------------------------------------------
 
-// View renders the full TUI screen.
 func (m Model) View() string {
 	if m.width == 0 {
 		return "Loading…"
 	}
 
-	inner := m.width - 2 // subtract border left+right
+	inner := m.width - 2
 
 	var b strings.Builder
 	b.WriteString(renderHeader(m, inner))
-	b.WriteString(renderList(m, inner))
+
 	if m.expanded && len(m.filtered) > 0 {
+		// When expanded, show only the selected row + detail pane.
+		b.WriteString(renderRow(m.filtered[m.cursor], true, inner))
 		b.WriteString(renderDivider(inner))
 		b.WriteString(renderDetail(m, inner))
+	} else {
+		b.WriteString(renderList(m, inner))
 	}
+
 	b.WriteString(renderFooter(inner))
-	b.WriteString(renderHelp())
+	b.WriteString(renderHelp(m.expanded))
 
 	return b.String()
 }
@@ -70,11 +74,11 @@ func (m Model) View() string {
 // ---------------------------------------------------------------------------
 
 func renderHeader(m Model, inner int) string {
-	project := filepath.Base(m.baseDir)
+	project := filepath.Base(filepath.Dir(m.baseDir))
 
 	session := "all sessions"
 	if m.sessionFilter != "" {
-		session = m.sessionFilter
+		session = truncate(m.sessionFilter, 16)
 	}
 
 	filter := "ALL"
@@ -88,7 +92,8 @@ func renderHeader(m Model, inner int) string {
 	title := fmt.Sprintf("─ Shugoshin — %s ", project)
 	bar1 := lipgloss.NewStyle().Bold(true).Foreground(colorWhite).Render(title)
 
-	meta := fmt.Sprintf(" Session: %-12s  Filter: %s", session, filter)
+	count := fmt.Sprintf("%d reports", len(m.filtered))
+	meta := fmt.Sprintf(" Session: %-16s  Filter: %-14s  %s", session, filter, count)
 	meta = styleDim.Render(meta)
 
 	sep := strings.Repeat("─", max(0, inner-lipgloss.Width(title)))
@@ -99,7 +104,7 @@ func renderHeader(m Model, inner int) string {
 }
 
 // ---------------------------------------------------------------------------
-// List
+// List (with viewport scrolling)
 // ---------------------------------------------------------------------------
 
 func renderList(m Model, inner int) string {
@@ -108,10 +113,52 @@ func renderList(m Model, inner int) string {
 		return "│" + padRight(msg, inner) + "│\n"
 	}
 
-	var b strings.Builder
-	for i, r := range m.filtered {
-		b.WriteString(renderRow(r, i == m.cursor, inner))
+	// Calculate visible window: reserve 5 lines for header(3)+footer(1)+help(1).
+	maxVisible := m.height - 5
+	if maxVisible < 3 {
+		maxVisible = 3
 	}
+
+	// Determine scroll window to keep cursor visible.
+	start := 0
+	if m.cursor >= maxVisible {
+		start = m.cursor - maxVisible + 1
+	}
+	end := start + maxVisible
+	if end > len(m.filtered) {
+		end = len(m.filtered)
+		start = max(0, end-maxVisible)
+	}
+
+	// Deduct indicator lines from the visible rows so total stays within budget.
+	hasAbove := start > 0
+	hasBelow := end < len(m.filtered)
+	if hasAbove {
+		end = min(end, start+maxVisible-1)
+	}
+	if hasBelow {
+		end = min(end, start+maxVisible-1)
+		if hasAbove {
+			end = min(end, start+maxVisible-2)
+		}
+	}
+
+	var b strings.Builder
+
+	if hasAbove {
+		indicator := styleDim.Render(fmt.Sprintf("  ↑ %d more above", start))
+		b.WriteString("│" + padRight(indicator, inner) + "│\n")
+	}
+
+	for i := start; i < end; i++ {
+		b.WriteString(renderRow(m.filtered[i], i == m.cursor, inner))
+	}
+
+	if hasBelow {
+		indicator := styleDim.Render(fmt.Sprintf("  ↓ %d more below", len(m.filtered)-end))
+		b.WriteString("│" + padRight(indicator, inner) + "│\n")
+	}
+
 	return b.String()
 }
 
@@ -123,8 +170,7 @@ func renderRow(r *types.Report, selected bool, inner int) string {
 	timeStr := styleTime.Render(ts)
 	timeWidth := lipgloss.Width(timeStr)
 
-	// Available space for intent text.
-	prefixWidth := 2 + lipgloss.Width(label) + 1 // "  " + label + " "
+	prefixWidth := 2 + lipgloss.Width(label) + 1
 	intentWidth := inner - prefixWidth - timeWidth - 2
 	if intentWidth < 0 {
 		intentWidth = 0
@@ -136,7 +182,6 @@ func renderRow(r *types.Report, selected bool, inner int) string {
 
 	if selected {
 		prefix := "> "
-		// Replace leading spaces with the cursor indicator.
 		line = prefix + strings.TrimPrefix(line, "  ")
 		line = styleSelect.Render(padRight(line, inner))
 	}
@@ -153,60 +198,124 @@ func renderDivider(inner int) string {
 }
 
 // ---------------------------------------------------------------------------
-// Detail pane
+// Detail pane (with scroll support)
 // ---------------------------------------------------------------------------
 
 func renderDetail(m Model, inner int) string {
 	r := m.filtered[m.cursor]
 
+	// Build all detail lines with proper word wrapping.
+	contentWidth := inner - 2 // 1 char padding each side
+
+	var lines []string
+	lines = append(lines, "")
+
+	// Verdict + intent match.
 	intentMatch := "NO"
 	if r.Verdict.IntentMatch {
 		intentMatch = "YES"
 	}
-
 	_, vs := verdictIcon(r.Verdict.Verdict)
-
-	lines := []string{
+	lines = append(lines,
 		fmt.Sprintf(" %s  %s   Intent match: %s",
 			styleLabel.Render("Verdict:"),
 			vs.Render(verdictLabel(r.Verdict.Verdict)),
 			styleBold.Render(intentMatch),
 		),
-		fmt.Sprintf(" %s  %s",
-			styleLabel.Render("Summary:"),
-			wrapText(r.Verdict.Summary, inner-12, 11),
-		),
-	}
+	)
+	lines = append(lines, "")
 
+	// Summary (word-wrapped).
+	lines = append(lines, " "+styleLabel.Render("Summary:"))
+	for _, wl := range wordWrap(r.Verdict.Summary, contentWidth-3) {
+		lines = append(lines, "   "+wl)
+	}
+	lines = append(lines, "")
+
+	// Affected areas.
 	if len(r.Verdict.AffectedAreas) > 0 {
 		lines = append(lines, " "+styleLabel.Render("Affected:"))
 		for _, a := range r.Verdict.AffectedAreas {
-			locs := strings.Join(a.Locations, "  ")
-			riskStyle := riskStyle(a.Risk)
-			areaLine := fmt.Sprintf("   %-20s %s  %s",
-				styleBold.Render(a.Symbol),
-				locs,
-				riskStyle.Render("("+a.Risk+")"),
+			riskStr := riskStyle(a.Risk).Render("(" + a.Risk + ")")
+			lines = append(lines, "")
+			lines = append(lines,
+				fmt.Sprintf("   %s  %s",
+					styleBold.Render(a.Symbol),
+					riskStr,
+				),
 			)
-			lines = append(lines, areaLine)
+			for _, loc := range a.Locations {
+				lines = append(lines, "     "+styleDim.Render(loc))
+			}
+		}
+		lines = append(lines, "")
+	}
+
+	// Reasoning (word-wrapped).
+	lines = append(lines, " "+styleLabel.Render("Reasoning:"))
+	for _, wl := range wordWrap(r.Verdict.Reasoning, contentWidth-3) {
+		lines = append(lines, "   "+wl)
+	}
+	lines = append(lines, "")
+
+	// Changed files.
+	lines = append(lines, " "+styleLabel.Render("Changed files:"))
+	for _, f := range r.ChangedFiles {
+		lines = append(lines, "   "+styleDim.Render(f))
+	}
+	lines = append(lines, "")
+
+	// Apply scroll offset and viewport clamp.
+	// Reserve: header(3) + selected row(1) + divider(1) + footer(1) + help(1) = 7.
+	detailHeight := m.height - 7
+	if detailHeight < 5 {
+		detailHeight = 5
+	}
+
+	// Clamp scroll.
+	maxScroll := len(lines) - detailHeight
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	scroll := m.detailScroll
+	if scroll > maxScroll {
+		scroll = maxScroll
+	}
+
+	end := scroll + detailHeight
+	if end > len(lines) {
+		end = len(lines)
+	}
+
+	// Deduct indicator lines from visible content so total stays within budget.
+	hasAbove := scroll > 0
+	hasBelow := end < len(lines)
+	if hasAbove {
+		end = min(end, scroll+detailHeight-1)
+	}
+	if hasBelow {
+		end = min(end, scroll+detailHeight-1)
+		if hasAbove {
+			end = min(end, scroll+detailHeight-2)
 		}
 	}
 
-	lines = append(lines,
-		fmt.Sprintf(" %s  %s",
-			styleLabel.Render("Reasoning:"),
-			wrapText(r.Verdict.Reasoning, inner-13, 12),
-		),
-		fmt.Sprintf(" %s  %s",
-			styleLabel.Render("Changed:"),
-			strings.Join(r.ChangedFiles, "  "),
-		),
-	)
-
 	var b strings.Builder
-	for _, l := range lines {
+
+	if hasAbove {
+		indicator := styleDim.Render(fmt.Sprintf("  ↑ scroll up (%d more)", scroll))
+		b.WriteString("│" + padRight(indicator, inner) + "│\n")
+	}
+
+	for _, l := range lines[scroll:end] {
 		b.WriteString("│" + padRight(l, inner) + "│\n")
 	}
+
+	if hasBelow {
+		indicator := styleDim.Render(fmt.Sprintf("  ↓ scroll down (%d more)", len(lines)-end))
+		b.WriteString("│" + padRight(indicator, inner) + "│\n")
+	}
+
 	return b.String()
 }
 
@@ -218,7 +327,10 @@ func renderFooter(inner int) string {
 	return "└" + strings.Repeat("─", inner) + "┘\n"
 }
 
-func renderHelp() string {
+func renderHelp(expanded bool) string {
+	if expanded {
+		return styleDim.Render("  ↑↓ scroll  esc/enter close  s session  f filter  r reload  q quit")
+	}
 	return styleDim.Render("  ↑↓ navigate  enter expand  s session  f filter  r reload  q quit")
 }
 
@@ -267,8 +379,6 @@ func riskStyle(risk string) lipgloss.Style {
 	}
 }
 
-// padRight pads or truncates s to exactly width visible characters, using
-// the lipgloss width calculation (handles ANSI escapes).
 func padRight(s string, width int) string {
 	w := lipgloss.Width(s)
 	if w >= width {
@@ -277,7 +387,6 @@ func padRight(s string, width int) string {
 	return s + strings.Repeat(" ", width-w)
 }
 
-// truncate shortens s to at most n visible characters, appending "…" if cut.
 func truncate(s string, n int) string {
 	if n <= 0 {
 		return ""
@@ -292,18 +401,37 @@ func truncate(s string, n int) string {
 	return string(runes[:n-1]) + "…"
 }
 
-// wrapText returns the first line of text. Subsequent lines are indented by
-// indent spaces. This is a simple single-wrap for long fields.
-func wrapText(text string, lineWidth, indent int) string {
-	if lineWidth <= 0 {
-		return text
+// wordWrap breaks text into lines of at most width characters, splitting at
+// word boundaries where possible.
+func wordWrap(text string, width int) []string {
+	if width <= 0 {
+		return []string{text}
 	}
-	runes := []rune(text)
-	if len(runes) <= lineWidth {
-		return text
-	}
-	first := string(runes[:lineWidth])
-	rest := string(runes[lineWidth:])
-	return first + "\n" + strings.Repeat(" ", indent+1) + rest
-}
 
+	var lines []string
+	for _, paragraph := range strings.Split(text, "\n") {
+		if paragraph == "" {
+			lines = append(lines, "")
+			continue
+		}
+
+		words := strings.Fields(paragraph)
+		if len(words) == 0 {
+			lines = append(lines, "")
+			continue
+		}
+
+		current := words[0]
+		for _, w := range words[1:] {
+			if len([]rune(current))+1+len([]rune(w)) <= width {
+				current += " " + w
+			} else {
+				lines = append(lines, current)
+				current = w
+			}
+		}
+		lines = append(lines, current)
+	}
+
+	return lines
+}

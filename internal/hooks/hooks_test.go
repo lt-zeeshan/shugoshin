@@ -8,7 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/zeeshans/shugoshin/internal/codex"
 	"github.com/zeeshans/shugoshin/internal/state"
 	"github.com/zeeshans/shugoshin/internal/types"
 )
@@ -34,6 +36,8 @@ func newBaseDir(t *testing.T) string {
 			t.Fatalf("creating %s: %v", sub, err)
 		}
 	}
+	// Write schema so stop hook can sync it.
+	_ = os.WriteFile(filepath.Join(baseDir, "schemas", "verdict.json"), codex.VerdictSchema, 0o644)
 	return baseDir
 }
 
@@ -51,10 +55,10 @@ func payloadJSON(t *testing.T, p types.HookPayload) *strings.Reader {
 
 func TestHandleSubmit(t *testing.T) {
 	tests := []struct {
-		name           string
-		payload        types.HookPayload
-		wantIntent     string
-		wantSessionID  string
+		name          string
+		payload       types.HookPayload
+		wantIntent    string
+		wantSessionID string
 	}{
 		{
 			name: "valid payload records intent",
@@ -105,9 +109,9 @@ func TestHandleSubmit(t *testing.T) {
 
 func TestHandlePostTool(t *testing.T) {
 	tests := []struct {
-		name          string
-		payloads      []types.HookPayload
-		wantChanges   []string
+		name        string
+		payloads    []types.HookPayload
+		wantChanges []string
 	}{
 		{
 			name: "valid edit payload adds file to changes",
@@ -211,39 +215,36 @@ func TestHandleStop(t *testing.T) {
 	}
 
 	tests := []struct {
-		name          string
-		payload       types.HookPayload
-		prepareState  func(t *testing.T, baseDir, cwd string)
-		executor      *mockExecutor
-		wantExecCalled bool
-		wantReport    bool
+		name         string
+		payload      types.HookPayload
+		prepareState func(t *testing.T, baseDir, cwd string)
+		executor     *mockExecutor
+		wantCleared  bool
 	}{
 		{
 			name: "stop_hook_active exits immediately without report",
 			payload: types.HookPayload{
-				SessionID:    "s1",
+				SessionID:      "s1",
 				StopHookActive: true,
 			},
-			prepareState:   nil,
-			executor:       &mockExecutor{verdict: fixedVerdict},
-			wantExecCalled: false,
-			wantReport:     false,
+			prepareState: nil,
+			executor:     &mockExecutor{verdict: fixedVerdict},
+			wantCleared:  false,
 		},
 		{
 			name: "empty current_changes exits without report",
 			payload: types.HookPayload{
-				SessionID:    "s2",
+				SessionID:      "s2",
 				StopHookActive: false,
 			},
-			prepareState:   nil,
-			executor:       &mockExecutor{verdict: fixedVerdict},
-			wantExecCalled: false,
-			wantReport:     false,
+			prepareState: nil,
+			executor:     &mockExecutor{verdict: fixedVerdict},
+			wantCleared:  false,
 		},
 		{
-			name: "with changes executor called and report written",
+			name: "with changes state is cleared and background spawned",
 			payload: types.HookPayload{
-				SessionID:    "s3",
+				SessionID:      "s3",
 				StopHookActive: false,
 			},
 			prepareState: func(t *testing.T, baseDir, cwd string) {
@@ -259,9 +260,8 @@ func TestHandleStop(t *testing.T) {
 					t.Fatalf("state.Save: %v", err)
 				}
 			},
-			executor:       &mockExecutor{verdict: fixedVerdict},
-			wantExecCalled: true,
-			wantReport:     true,
+			executor:    &mockExecutor{verdict: fixedVerdict},
+			wantCleared: true,
 		},
 	}
 
@@ -279,28 +279,7 @@ func TestHandleStop(t *testing.T) {
 				t.Fatalf("HandleStop returned non-nil error: %v", err)
 			}
 
-			if tt.executor.called != tt.wantExecCalled {
-				t.Errorf("executor.called = %v, want %v", tt.executor.called, tt.wantExecCalled)
-			}
-
-			reportsDir := filepath.Join(baseDir, "reports")
-			hasReport := false
-			_ = filepath.WalkDir(reportsDir, func(path string, d os.DirEntry, err error) error {
-				if err != nil {
-					return nil
-				}
-				if !d.IsDir() && filepath.Ext(path) == ".json" {
-					hasReport = true
-				}
-				return nil
-			})
-
-			if hasReport != tt.wantReport {
-				t.Errorf("report written = %v, want %v", hasReport, tt.wantReport)
-			}
-
-			if tt.wantReport {
-				// State should be cleared after HandleStop.
+			if tt.wantCleared {
 				s, err := state.Load(baseDir, tt.payload.SessionID)
 				if err != nil {
 					t.Fatalf("state.Load after stop: %v", err)
@@ -311,6 +290,109 @@ func TestHandleStop(t *testing.T) {
 				if s.CurrentIntent != "" {
 					t.Errorf("CurrentIntent not cleared: %q", s.CurrentIntent)
 				}
+			}
+		})
+	}
+}
+
+// ---------- HandleAnalyse ----------
+
+func TestHandleAnalyse(t *testing.T) {
+	fixedVerdict := &types.Verdict{
+		Verdict:       "SAFE",
+		Summary:       "all clear",
+		AffectedAreas: nil,
+		IntentMatch:   true,
+		Reasoning:     "no issues found",
+	}
+
+	tests := []struct {
+		name       string
+		req        AnalyseRequest
+		executor   *mockExecutor
+		wantCalled bool
+		wantReport bool
+	}{
+		{
+			name: "analysis runs and writes report",
+			req: AnalyseRequest{
+				SessionID:     "s-analyse",
+				Intent:        "fix bug",
+				ChangedFiles:  []string{"main.go"},
+				Diffs:         map[string]string{"main.go": "diff content here"},
+				ResponseIndex: 0,
+			},
+			executor:   &mockExecutor{verdict: fixedVerdict},
+			wantCalled: true,
+			wantReport: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			baseDir := newBaseDir(t)
+			tt.req.BaseDir = baseDir
+			tt.req.Cwd = filepath.Dir(baseDir)
+
+			// Write request to temp file.
+			reqData, err := json.Marshal(tt.req)
+			if err != nil {
+				t.Fatalf("marshal request: %v", err)
+			}
+			reqFile := filepath.Join(t.TempDir(), "req.json")
+			if err := os.WriteFile(reqFile, reqData, 0o644); err != nil {
+				t.Fatalf("write request file: %v", err)
+			}
+
+			if err := HandleAnalyse(reqFile, tt.executor); err != nil {
+				t.Fatalf("HandleAnalyse returned error: %v", err)
+			}
+
+			if tt.executor.called != tt.wantCalled {
+				t.Errorf("executor.called = %v, want %v", tt.executor.called, tt.wantCalled)
+			}
+
+			// Check report was written.
+			reportsDir := filepath.Join(baseDir, "reports")
+			hasReport := false
+			_ = filepath.WalkDir(reportsDir, func(path string, d os.DirEntry, err error) error {
+				if err != nil {
+					return nil
+				}
+				if !d.IsDir() && filepath.Ext(path) == ".json" {
+					hasReport = true
+
+					// Verify report content.
+					data, readErr := os.ReadFile(path)
+					if readErr != nil {
+						t.Errorf("reading report: %v", readErr)
+						return nil
+					}
+					var report types.Report
+					if err := json.Unmarshal(data, &report); err != nil {
+						t.Errorf("parsing report: %v", err)
+						return nil
+					}
+					if report.Verdict.Verdict != fixedVerdict.Verdict {
+						t.Errorf("report verdict = %q, want %q", report.Verdict.Verdict, fixedVerdict.Verdict)
+					}
+					if report.SessionID != tt.req.SessionID {
+						t.Errorf("report session = %q, want %q", report.SessionID, tt.req.SessionID)
+					}
+					if report.Timestamp.After(time.Now().Add(time.Minute)) {
+						t.Errorf("report timestamp is in the future: %v", report.Timestamp)
+					}
+				}
+				return nil
+			})
+
+			if hasReport != tt.wantReport {
+				t.Errorf("report written = %v, want %v", hasReport, tt.wantReport)
+			}
+
+			// Request file should be cleaned up.
+			if _, err := os.Stat(reqFile); !os.IsNotExist(err) {
+				t.Errorf("request file should have been deleted")
 			}
 		})
 	}

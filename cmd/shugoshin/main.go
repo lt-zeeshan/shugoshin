@@ -10,7 +10,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/zeeshans/shugoshin/internal/codex"
 	"github.com/zeeshans/shugoshin/internal/hooks"
 	initpkg "github.com/zeeshans/shugoshin/internal/init"
 	"github.com/zeeshans/shugoshin/internal/logger"
@@ -137,7 +136,7 @@ func hookStopCmd() *cobra.Command {
 		Short: "Handle Stop hook",
 		Run: func(cmd *cobra.Command, args []string) {
 			defer logger.Close()
-			if err := hooks.HandleStop(os.Stdin, codex.RealExecutor{}); err != nil {
+			if err := hooks.HandleStop(os.Stdin); err != nil {
 				fmt.Fprintf(os.Stderr, "shugoshin hook stop: %v\n", err)
 			}
 			os.Exit(0)
@@ -148,12 +147,12 @@ func hookStopCmd() *cobra.Command {
 func hookAnalyseCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:    "analyse [request-file]",
-		Short:  "Run background Codex analysis (internal use)",
+		Short:  "Run background analysis (internal use)",
 		Args:   cobra.ExactArgs(1),
 		Hidden: true,
 		Run: func(cmd *cobra.Command, args []string) {
 			defer logger.Close()
-			if err := hooks.HandleAnalyse(args[0], codex.RealExecutor{}); err != nil {
+			if err := hooks.HandleAnalyse(args[0], nil); err != nil {
 				fmt.Fprintf(os.Stderr, "shugoshin hook analyse: %v\n", err)
 			}
 			os.Exit(0)

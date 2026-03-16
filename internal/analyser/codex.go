@@ -1,9 +1,8 @@
-package codex
+package analyser
 
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -15,17 +14,12 @@ import (
 	"github.com/zeeshans/shugoshin/internal/types"
 )
 
-const analyseTimeout = 240 * time.Second
+const analyseTimeout = 600 * time.Second
 
-// Executor analyses a set of diffs against the stated task intent and returns
-// a structured verdict. Analyse must never return a Go error — failures are
-// encoded as TIMEOUT or ERROR verdicts so the hook pipeline never crashes.
-type Executor interface {
-	Analyse(ctx context.Context, intent string, diffs map[string]string, schemaPath string) (*types.Verdict, error)
-}
+// CodexAnalyser invokes the Codex CLI as a subprocess.
+type CodexAnalyser struct{}
 
-// RealExecutor invokes the Codex CLI as a subprocess.
-type RealExecutor struct{}
+func (CodexAnalyser) Name() string { return "codex" }
 
 // LeanHomePath returns the path to the lean CODEX_HOME directory used by
 // Shugoshin. This is a temp directory with no MCP servers configured.
@@ -70,10 +64,8 @@ func RemoveLeanHome() error {
 }
 
 // Analyse builds the prompt, spawns `codex exec`, and parses its structured
-// JSON output. Context deadline is augmented with an internal 120-second cap.
-// All subprocess failures are returned as TIMEOUT or ERROR verdicts; this
-// method never returns a non-nil Go error.
-func (r RealExecutor) Analyse(ctx context.Context, intent string, diffs map[string]string, schemaPath string) (*types.Verdict, error) {
+// JSON output.
+func (CodexAnalyser) Analyse(ctx context.Context, intent string, diffs map[string]string, schemaPath string) (*types.Verdict, error) {
 	prompt := BuildPrompt(intent, diffs)
 
 	timeoutCtx, cancel := context.WithTimeout(ctx, analyseTimeout)
@@ -94,7 +86,6 @@ func (r RealExecutor) Analyse(ctx context.Context, intent string, diffs map[stri
 	// Use a lean CODEX_HOME with no MCP servers.
 	home := LeanHomePath()
 	if _, err := os.Stat(filepath.Join(home, "auth.json")); err != nil {
-		// Lazy setup if init wasn't run or home was cleaned up.
 		if setupErr := SetupLeanHome(); setupErr != nil {
 			logger.Error("setting up lean codex home: %v", setupErr)
 		}
@@ -127,18 +118,4 @@ func (r RealExecutor) Analyse(ctx context.Context, intent string, diffs map[stri
 
 	logger.Info("codex completed in %s", elapsed.Round(time.Millisecond))
 	return parseVerdict(stdout.Bytes())
-}
-
-// parseVerdict unmarshals raw JSON bytes into a Verdict. On failure it returns
-// an ERROR verdict rather than a Go error, keeping the hook pipeline stable.
-func parseVerdict(raw []byte) (*types.Verdict, error) {
-	var v types.Verdict
-	if err := json.Unmarshal(raw, &v); err != nil {
-		return &types.Verdict{
-			Verdict:   "ERROR",
-			Summary:   "Invalid JSON from Codex",
-			Reasoning: string(raw),
-		}, nil
-	}
-	return &v, nil
 }

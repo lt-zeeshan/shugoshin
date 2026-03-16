@@ -10,21 +10,23 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zeeshans/shugoshin/internal/codex"
+	"github.com/zeeshans/shugoshin/internal/analyser"
 	"github.com/zeeshans/shugoshin/internal/state"
 	"github.com/zeeshans/shugoshin/internal/types"
 )
 
-// mockExecutor is a test double for codex.Executor that returns a fixed verdict.
-type mockExecutor struct {
+// mockAnalyser is a test double for analyser.Analyser that returns a fixed verdict.
+type mockAnalyser struct {
 	verdict *types.Verdict
 	called  bool
 }
 
-func (m *mockExecutor) Analyse(_ context.Context, _ string, _ map[string]string, _ string) (*types.Verdict, error) {
+func (m *mockAnalyser) Analyse(_ context.Context, _ string, _ map[string]string, _ string) (*types.Verdict, error) {
 	m.called = true
 	return m.verdict, nil
 }
+
+func (m *mockAnalyser) Name() string { return "mock" }
 
 // newBaseDir creates a temporary .shugoshin directory and returns its path.
 func newBaseDir(t *testing.T) string {
@@ -37,7 +39,7 @@ func newBaseDir(t *testing.T) string {
 		}
 	}
 	// Write schema so stop hook can sync it.
-	_ = os.WriteFile(filepath.Join(baseDir, "schemas", "verdict.json"), codex.VerdictSchema, 0o644)
+	_ = os.WriteFile(filepath.Join(baseDir, "schemas", "verdict.json"), analyser.VerdictSchema, 0o644)
 	return baseDir
 }
 
@@ -209,16 +211,10 @@ func initGitRepo(t *testing.T, dir, filename, initial, modified string) {
 }
 
 func TestHandleStop(t *testing.T) {
-	fixedVerdict := &types.Verdict{
-		Verdict: "HIGH_RISK",
-		Summary: "destructive change detected",
-	}
-
 	tests := []struct {
 		name         string
 		payload      types.HookPayload
 		prepareState func(t *testing.T, baseDir, cwd string)
-		executor     *mockExecutor
 		wantCleared  bool
 	}{
 		{
@@ -228,7 +224,6 @@ func TestHandleStop(t *testing.T) {
 				StopHookActive: true,
 			},
 			prepareState: nil,
-			executor:     &mockExecutor{verdict: fixedVerdict},
 			wantCleared:  false,
 		},
 		{
@@ -238,7 +233,6 @@ func TestHandleStop(t *testing.T) {
 				StopHookActive: false,
 			},
 			prepareState: nil,
-			executor:     &mockExecutor{verdict: fixedVerdict},
 			wantCleared:  false,
 		},
 		{
@@ -260,7 +254,6 @@ func TestHandleStop(t *testing.T) {
 					t.Fatalf("state.Save: %v", err)
 				}
 			},
-			executor:    &mockExecutor{verdict: fixedVerdict},
 			wantCleared: true,
 		},
 	}
@@ -275,7 +268,7 @@ func TestHandleStop(t *testing.T) {
 				tt.prepareState(t, baseDir, cwd)
 			}
 
-			if err := HandleStop(payloadJSON(t, tt.payload), tt.executor); err != nil {
+			if err := HandleStop(payloadJSON(t, tt.payload)); err != nil {
 				t.Fatalf("HandleStop returned non-nil error: %v", err)
 			}
 
@@ -287,8 +280,8 @@ func TestHandleStop(t *testing.T) {
 				if len(s.CurrentChanges) != 0 {
 					t.Errorf("CurrentChanges not cleared: %v", s.CurrentChanges)
 				}
-				if s.CurrentIntent != "" {
-					t.Errorf("CurrentIntent not cleared: %q", s.CurrentIntent)
+				if s.CurrentIntent != "add comment" {
+					t.Errorf("CurrentIntent = %q, want %q (should be preserved)", s.CurrentIntent, "add comment")
 				}
 			}
 		})
@@ -309,7 +302,7 @@ func TestHandleAnalyse(t *testing.T) {
 	tests := []struct {
 		name       string
 		req        AnalyseRequest
-		executor   *mockExecutor
+		executor   *mockAnalyser
 		wantCalled bool
 		wantReport bool
 	}{
@@ -322,7 +315,7 @@ func TestHandleAnalyse(t *testing.T) {
 				Diffs:         map[string]string{"main.go": "diff content here"},
 				ResponseIndex: 0,
 			},
-			executor:   &mockExecutor{verdict: fixedVerdict},
+			executor:   &mockAnalyser{verdict: fixedVerdict},
 			wantCalled: true,
 			wantReport: true,
 		},

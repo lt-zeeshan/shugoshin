@@ -1,4 +1,4 @@
-package codex
+package analyser
 
 import (
 	"strings"
@@ -6,6 +6,27 @@ import (
 
 	"github.com/zeeshans/shugoshin/internal/types"
 )
+
+func TestNew(t *testing.T) {
+	tests := []struct {
+		backend  string
+		wantName string
+	}{
+		{"claude", "claude"},
+		{"codex", "codex"},
+		{"", "claude"},
+		{"unknown", "claude"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.backend, func(t *testing.T) {
+			a := New(tt.backend)
+			if a.Name() != tt.wantName {
+				t.Errorf("New(%q).Name() = %q, want %q", tt.backend, a.Name(), tt.wantName)
+			}
+		})
+	}
+}
 
 func TestBuildPrompt(t *testing.T) {
 	tests := []struct {
@@ -37,8 +58,8 @@ func TestBuildPrompt(t *testing.T) {
 			name:   "multiple files",
 			intent: "refactor auth middleware",
 			diffs: map[string]string{
-				"middleware/auth.go":   "+func NewMiddleware() *Middleware {",
-				"middleware/token.go":  "-func Validate(t string) bool {",
+				"middleware/auth.go":  "+func NewMiddleware() *Middleware {",
+				"middleware/token.go": "-func Validate(t string) bool {",
 			},
 			contains: []string{
 				"refactor auth middleware",
@@ -191,8 +212,8 @@ func TestParseVerdict_InvalidJSON(t *testing.T) {
 			if got.Verdict != "ERROR" {
 				t.Errorf("Verdict = %q, want %q", got.Verdict, "ERROR")
 			}
-			if got.Summary != "Invalid JSON from Codex" {
-				t.Errorf("Summary = %q, want %q", got.Summary, "Invalid JSON from Codex")
+			if got.Summary != "Invalid JSON from analyser" {
+				t.Errorf("Summary = %q, want %q", got.Summary, "Invalid JSON from analyser")
 			}
 			if got.Reasoning != tt.raw {
 				t.Errorf("Reasoning = %q, want raw input %q", got.Reasoning, tt.raw)

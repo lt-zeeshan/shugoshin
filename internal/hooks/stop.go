@@ -8,7 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/zeeshans/shugoshin/internal/codex"
+	"github.com/zeeshans/shugoshin/internal/analyser"
+	"github.com/zeeshans/shugoshin/internal/config"
 	"github.com/zeeshans/shugoshin/internal/logger"
 	"github.com/zeeshans/shugoshin/internal/state"
 	"github.com/zeeshans/shugoshin/internal/types"
@@ -17,6 +18,7 @@ import (
 // AnalyseRequest is serialised to a temp file and passed to the background
 // analyse subprocess.
 type AnalyseRequest struct {
+	Backend       string            `json:"backend"`
 	BaseDir       string            `json:"base_dir"`
 	SessionID     string            `json:"session_id"`
 	Cwd           string            `json:"cwd"`
@@ -27,9 +29,9 @@ type AnalyseRequest struct {
 }
 
 // HandleStop processes a Stop hook event. It reads the payload, builds diffs,
-// clears session state, and spawns a background subprocess for the slow Codex
+// clears session state, and spawns a background subprocess for the slow
 // analysis. The hook itself exits in milliseconds.
-func HandleStop(r io.Reader, _ codex.Executor) (retErr error) {
+func HandleStop(r io.Reader) (retErr error) {
 	defer func() {
 		recover() //nolint:errcheck
 		retErr = nil
@@ -66,6 +68,13 @@ func HandleStop(r io.Reader, _ codex.Executor) (retErr error) {
 		return nil
 	}
 
+	// Load settings to determine which backend to use.
+	settings, err := config.Load(baseDir)
+	if err != nil {
+		logger.Error("config.Load: %v", err)
+		settings = &config.Settings{Backend: config.DefaultBackend}
+	}
+
 	// Build diffs synchronously (fast — just git commands).
 	diffs := make(map[string]string, len(s.CurrentChanges))
 	for _, file := range s.CurrentChanges {
@@ -97,7 +106,7 @@ func HandleStop(r io.Reader, _ codex.Executor) (retErr error) {
 
 	// Ensure the on-disk schema matches the embedded version.
 	schemaPath := filepath.Join(payload.Cwd, ".shugoshin", "schemas", "verdict.json")
-	_ = os.WriteFile(schemaPath, codex.VerdictSchema, 0o644)
+	_ = os.WriteFile(schemaPath, analyser.VerdictSchema, 0o644)
 
 	// Clear state now (before async analysis) so the next response starts clean.
 	if err := state.ClearResponse(baseDir, s); err != nil {
@@ -106,6 +115,7 @@ func HandleStop(r io.Reader, _ codex.Executor) (retErr error) {
 
 	// Write the analyse request to a temp file.
 	req := AnalyseRequest{
+		Backend:       settings.Backend,
 		BaseDir:       baseDir,
 		SessionID:     s.SessionID,
 		Cwd:           s.Cwd,
@@ -149,8 +159,8 @@ func HandleStop(r io.Reader, _ codex.Executor) (retErr error) {
 		_ = bgCmd.Wait()
 	}()
 
-	logger.Info("spawned background analysis pid=%d file_count=%d", bgCmd.Process.Pid, len(diffs))
-	fmt.Printf("[shugoshin] analysing %d changed files in background...\n", len(diffs))
+	logger.Info("spawned background analysis pid=%d file_count=%d backend=%s", bgCmd.Process.Pid, len(diffs), settings.Backend)
+	fmt.Printf("[shugoshin] analysing %d changed files in background (backend: %s)...\n", len(diffs), settings.Backend)
 
 	return nil
 }

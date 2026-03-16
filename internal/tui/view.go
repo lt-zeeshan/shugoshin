@@ -93,7 +93,7 @@ func renderHeader(m Model, inner int) string {
 	bar1 := lipgloss.NewStyle().Bold(true).Foreground(colorWhite).Render(title)
 
 	count := fmt.Sprintf("%d reports", len(m.filtered))
-	meta := fmt.Sprintf(" Session: %-16s  Filter: %-14s  %s", session, filter, count)
+	meta := fmt.Sprintf(" Session: %-16s  Filter: %-14s  Backend: %-6s  %s", session, filter, m.backend, count)
 	meta = styleDim.Render(meta)
 
 	sep := strings.Repeat("─", max(0, inner-lipgloss.Width(title)))
@@ -164,6 +164,10 @@ func renderList(m Model, inner int) string {
 
 func renderRow(r *types.Report, selected bool, inner int) string {
 	icon, verdictStyle := verdictIcon(r.Verdict.Verdict)
+	if r.Resolved {
+		icon = "✓"
+		verdictStyle = styleDim
+	}
 	label := verdictStyle.Render(fmt.Sprintf("%s %-13s", icon, verdictLabel(r.Verdict.Verdict)))
 
 	ts := r.Timestamp.Local().Format("15:04")
@@ -216,11 +220,16 @@ func renderDetail(m Model, inner int) string {
 		intentMatch = "YES"
 	}
 	_, vs := verdictIcon(r.Verdict.Verdict)
+	resolvedStr := ""
+	if r.Resolved {
+		resolvedStr = "   " + styleSafe.Render("[RESOLVED]")
+	}
 	lines = append(lines,
-		fmt.Sprintf(" %s  %s   Intent match: %s",
+		fmt.Sprintf(" %s  %s   Intent match: %s%s",
 			styleLabel.Render("Verdict:"),
 			vs.Render(verdictLabel(r.Verdict.Verdict)),
 			styleBold.Render(intentMatch),
+			resolvedStr,
 		),
 	)
 	lines = append(lines, "")
@@ -329,9 +338,9 @@ func renderFooter(inner int) string {
 
 func renderHelp(expanded bool) string {
 	if expanded {
-		return styleDim.Render("  ↑↓ scroll  esc/enter close  s session  f filter  r reload  q quit")
+		return styleDim.Render("  ↑↓ scroll  esc/enter close  x resolve  d delete  s session  f filter  b backend  r reload  q quit")
 	}
-	return styleDim.Render("  ↑↓ navigate  enter expand  s session  f filter  r reload  q quit")
+	return styleDim.Render("  ↑↓ navigate  enter expand  x resolve  d delete  s session  f filter  b backend  r reload  q quit")
 }
 
 // ---------------------------------------------------------------------------

@@ -38,11 +38,13 @@ type Verdict struct {
 }
 
 type Report struct {
-	SessionID     string   `json:"session_id"`
-	Cwd           string   `json:"cwd"`
+	SessionID     string    `json:"session_id"`
+	Cwd           string    `json:"cwd"`
 	Timestamp     time.Time `json:"timestamp"`
-	ResponseIndex int      `json:"response_index"`
-	Intent        string   `json:"intent"`
-	ChangedFiles  []string `json:"changed_files"`
-	Verdict       Verdict  `json:"verdict"`
+	ResponseIndex int       `json:"response_index"`
+	Intent        string    `json:"intent"`
+	ChangedFiles  []string  `json:"changed_files"`
+	Verdict       Verdict   `json:"verdict"`
+	Resolved      bool      `json:"resolved,omitempty"`
+	FilePath      string    `json:"-"`
 }

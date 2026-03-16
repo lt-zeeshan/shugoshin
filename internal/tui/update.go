@@ -2,6 +2,9 @@ package tui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/zeeshans/shugoshin/internal/analyser"
+	"github.com/zeeshans/shugoshin/internal/config"
+	"github.com/zeeshans/shugoshin/internal/reports"
 	"github.com/zeeshans/shugoshin/internal/types"
 )
 
@@ -101,6 +104,42 @@ func handleKey(m Model, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.expanded = false
 		m.detailScroll = 0
 		applyFilters(&m)
+
+	case "x":
+		if len(m.filtered) > 0 {
+			r := m.filtered[m.cursor]
+			r.Resolved = !r.Resolved
+			_ = reports.UpdateReport(r)
+		}
+
+	case "d":
+		if len(m.filtered) > 0 {
+			r := m.filtered[m.cursor]
+			if err := reports.DeleteReport(r); err == nil {
+				// Remove from both slices.
+				for i, rr := range m.reports {
+					if rr == r {
+						m.reports = append(m.reports[:i], m.reports[i+1:]...)
+						break
+					}
+				}
+				m.expanded = false
+				m.detailScroll = 0
+				applyFilters(&m)
+			}
+		}
+
+	case "b":
+		backends := analyser.Backends
+		next := backends[0]
+		for i, b := range backends {
+			if b == m.backend {
+				next = backends[(i+1)%len(backends)]
+				break
+			}
+		}
+		m.backend = next
+		_ = config.Save(m.baseDir, &config.Settings{Backend: m.backend})
 
 	case "r":
 		m.expanded = false

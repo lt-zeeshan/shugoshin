@@ -11,6 +11,7 @@ import (
 )
 
 // parseReportFile reads and unmarshals a single JSON report file.
+// The file path is stored in Report.FilePath for later update/delete.
 func parseReportFile(path string) (*types.Report, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -20,7 +21,28 @@ func parseReportFile(path string) (*types.Report, error) {
 	if err := json.Unmarshal(data, &r); err != nil {
 		return nil, fmt.Errorf("parsing report file %s: %w", path, err)
 	}
+	r.FilePath = path
 	return &r, nil
+}
+
+// UpdateReport writes the report back to its original file path.
+func UpdateReport(report *types.Report) error {
+	if report.FilePath == "" {
+		return fmt.Errorf("report has no file path")
+	}
+	data, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling report: %w", err)
+	}
+	return os.WriteFile(report.FilePath, data, 0o644)
+}
+
+// DeleteReport removes the report file from disk.
+func DeleteReport(report *types.Report) error {
+	if report.FilePath == "" {
+		return fmt.Errorf("report has no file path")
+	}
+	return os.Remove(report.FilePath)
 }
 
 // sortNewestFirst sorts reports descending by Timestamp, then descending by

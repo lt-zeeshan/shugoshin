@@ -211,7 +211,7 @@ func TestClearResponse(t *testing.T) {
 		wantCwd           string
 	}{
 		{
-			name: "clears fields and bumps ResponseIndex",
+			name: "clears changes, preserves intent, and bumps ResponseIndex",
 			initial: &types.SessionState{
 				SessionID:      "clear-1",
 				Cwd:            "/work",
@@ -219,14 +219,14 @@ func TestClearResponse(t *testing.T) {
 				CurrentChanges: []string{"foo.go", "bar.go"},
 				ResponseIndex:  2,
 			},
-			wantIntent:        "",
+			wantIntent:        "some intent",
 			wantChanges:       nil,
 			wantResponseIndex: 3,
 			wantSessionID:     "clear-1",
 			wantCwd:           "/work",
 		},
 		{
-			name: "preserves SessionID and Cwd",
+			name: "preserves SessionID, Cwd, and intent",
 			initial: &types.SessionState{
 				SessionID:      "preserve-session",
 				Cwd:            "/preserve/cwd",
@@ -234,7 +234,7 @@ func TestClearResponse(t *testing.T) {
 				CurrentChanges: []string{"x.go"},
 				ResponseIndex:  0,
 			},
-			wantIntent:        "",
+			wantIntent:        "another intent",
 			wantChanges:       nil,
 			wantResponseIndex: 1,
 			wantSessionID:     "preserve-session",

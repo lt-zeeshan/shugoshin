@@ -7,15 +7,17 @@ import (
 	"os"
 	"time"
 
-	"github.com/zeeshans/shugoshin/internal/codex"
+	"github.com/zeeshans/shugoshin/internal/analyser"
 	"github.com/zeeshans/shugoshin/internal/logger"
 	"github.com/zeeshans/shugoshin/internal/reports"
 	"github.com/zeeshans/shugoshin/internal/types"
 )
 
-// HandleAnalyse runs the Codex analysis from a serialised AnalyseRequest file.
+// HandleAnalyse runs the analysis from a serialised AnalyseRequest file.
 // This is invoked as a background subprocess by HandleStop.
-func HandleAnalyse(reqPath string, executor codex.Executor) error {
+// If executor is non-nil it is used directly (for tests); otherwise a new
+// analyser is created from the request's Backend field.
+func HandleAnalyse(reqPath string, executor analyser.Analyser) error {
 	defer os.Remove(reqPath)
 
 	data, err := os.ReadFile(reqPath)
@@ -29,21 +31,25 @@ func HandleAnalyse(reqPath string, executor codex.Executor) error {
 	}
 
 	logger.Init(req.BaseDir)
-	logger.Info("background analysis started session_id=%s file_count=%d", req.SessionID, len(req.Diffs))
+	logger.Info("background analysis started session_id=%s file_count=%d backend=%s", req.SessionID, len(req.Diffs), req.Backend)
+
+	if executor == nil {
+		executor = analyser.New(req.Backend)
+	}
 
 	schemaPath := req.BaseDir + "/schemas/verdict.json"
 
 	verdict, err := executor.Analyse(context.Background(), req.Intent, req.Diffs, schemaPath)
 	if err != nil {
-		logger.Error("codex analysis: %v", err)
+		logger.Error("analysis: %v", err)
 		return nil
 	}
 	if verdict == nil {
-		logger.Error("codex analysis returned nil verdict")
+		logger.Error("analysis returned nil verdict")
 		return nil
 	}
 
-	logger.Info("codex verdict: %s summary=%q", verdict.Verdict, verdict.Summary)
+	logger.Info("%s verdict: %s summary=%q", executor.Name(), verdict.Verdict, verdict.Summary)
 
 	report := types.Report{
 		SessionID:     req.SessionID,

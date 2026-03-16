@@ -489,6 +489,35 @@ func TestWindowSizeMsgUpdatesModel(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Backend toggle
+// ---------------------------------------------------------------------------
+
+func TestBackendToggle(t *testing.T) {
+	tests := []struct {
+		name        string
+		presses     int
+		wantBackend string
+	}{
+		{name: "1 press → codex", presses: 1, wantBackend: "codex"},
+		{name: "2 presses → claude", presses: 2, wantBackend: "claude"},
+		{name: "3 presses → codex again", presses: 3, wantBackend: "codex"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := baseModel()
+			for i := 0; i < tt.presses; i++ {
+				updated, _ := m.Update(keyMsg("b"))
+				m = updated.(Model)
+			}
+			if m.backend != tt.wantBackend {
+				t.Errorf("backend = %q, want %q", m.backend, tt.wantBackend)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // uniqueSessions
 // ---------------------------------------------------------------------------
 

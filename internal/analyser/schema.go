@@ -1,4 +1,4 @@
-package codex
+package analyser
 
 import _ "embed"
 

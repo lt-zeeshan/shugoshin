@@ -73,10 +73,10 @@ func Save(baseDir string, state *types.SessionState) error {
 	return nil
 }
 
-// ClearResponse resets CurrentIntent and CurrentChanges, increments
-// ResponseIndex, and persists the updated state via Save.
+// ClearResponse resets CurrentChanges, increments ResponseIndex, and persists
+// the updated state via Save. CurrentIntent is preserved so that subsequent
+// Stop events in the same conversation turn still have the user's intent.
 func ClearResponse(baseDir string, state *types.SessionState) error {
-	state.CurrentIntent = ""
 	state.CurrentChanges = nil
 	state.ResponseIndex++
 	return Save(baseDir, state)

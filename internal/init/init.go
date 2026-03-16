@@ -5,7 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/zeeshans/shugoshin/internal/codex"
+	"github.com/zeeshans/shugoshin/internal/analyser"
+	"github.com/zeeshans/shugoshin/internal/config"
 	"github.com/zeeshans/shugoshin/internal/logger"
 )
 
@@ -21,8 +22,9 @@ const gitignoreEntry = ".shugoshin/state/"
 // Init initialises Shugoshin for the project at projectRoot:
 //  1. Creates .shugoshin/schemas/, .shugoshin/state/, and .shugoshin/reports/.
 //  2. Writes the verdict JSON schema to .shugoshin/schemas/verdict.json.
-//  3. Merges Shugoshin hook entries into .claude/settings.json.
-//  4. Adds .shugoshin/state/ to .gitignore (only if not already present).
+//  3. Writes default settings.json if not present.
+//  4. Merges Shugoshin hook entries into .claude/settings.json.
+//  5. Adds .shugoshin/state/ to .gitignore (only if not already present).
 func Init(projectRoot string) error {
 	baseDir := filepath.Join(projectRoot, ".shugoshin")
 	logger.Init(baseDir)
@@ -37,11 +39,21 @@ func Init(projectRoot string) error {
 	fmt.Println("Created .shugoshin/{schemas,state,reports}/")
 
 	schemaPath := filepath.Join(projectRoot, ".shugoshin", "schemas", "verdict.json")
-	if err := os.WriteFile(schemaPath, codex.VerdictSchema, 0o644); err != nil {
+	if err := os.WriteFile(schemaPath, analyser.VerdictSchema, 0o644); err != nil {
 		return fmt.Errorf("writing verdict schema: %w", err)
 	}
 	logger.Info("wrote verdict schema to %s", schemaPath)
 	fmt.Println("Wrote .shugoshin/schemas/verdict.json")
+
+	// Write default settings if not already present.
+	settingsPath := filepath.Join(baseDir, "settings.json")
+	if _, err := os.Stat(settingsPath); os.IsNotExist(err) {
+		if err := config.Save(baseDir, &config.Settings{Backend: config.DefaultBackend}); err != nil {
+			return fmt.Errorf("writing default settings: %w", err)
+		}
+		logger.Info("wrote default settings.json")
+		fmt.Println("Wrote .shugoshin/settings.json")
+	}
 
 	if err := MergeHooks(projectRoot); err != nil {
 		return fmt.Errorf("merging hooks: %w", err)
@@ -55,11 +67,11 @@ func Init(projectRoot string) error {
 	logger.Info("added %s to .gitignore", gitignoreEntry)
 	fmt.Println("Added .shugoshin/state/ to .gitignore")
 
-	if err := codex.SetupLeanHome(); err != nil {
+	if err := analyser.SetupLeanHome(); err != nil {
 		return fmt.Errorf("setting up codex home: %w", err)
 	}
-	logger.Info("created lean codex home at %s", codex.LeanHomePath())
-	fmt.Printf("Created lean Codex home at %s (no MCP servers)\n", codex.LeanHomePath())
+	logger.Info("created lean codex home at %s", analyser.LeanHomePath())
+	fmt.Printf("Created lean Codex home at %s (no MCP servers)\n", analyser.LeanHomePath())
 
 	logger.Info("init complete")
 	fmt.Println("Shugoshin initialised successfully.")

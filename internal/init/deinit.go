@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/zeeshans/shugoshin/internal/codex"
+	"github.com/zeeshans/shugoshin/internal/analyser"
 	"github.com/zeeshans/shugoshin/internal/logger"
 )
 
@@ -38,10 +38,10 @@ func Deinit(projectRoot string) error {
 	}
 	fmt.Println("Removed .shugoshin/state/ from .gitignore")
 
-	if err := codex.RemoveLeanHome(); err != nil {
+	if err := analyser.RemoveLeanHome(); err != nil {
 		return fmt.Errorf("removing codex home: %w", err)
 	}
-	fmt.Printf("Removed lean Codex home at %s\n", codex.LeanHomePath())
+	fmt.Printf("Removed lean Codex home at %s\n", analyser.LeanHomePath())
 
 	fmt.Println("Shugoshin deinitialised successfully.")
 	return nil

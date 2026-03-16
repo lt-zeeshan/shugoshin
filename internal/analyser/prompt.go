@@ -1,5 +1,4 @@
-// Package codex wraps the Codex CLI subprocess for blast radius analysis.
-package codex
+package analyser
 
 import (
 	"fmt"
@@ -8,7 +7,7 @@ import (
 
 // BuildPrompt assembles the analysis prompt from the task intent and a map of
 // filename → diff content. The returned string is passed directly as the
-// positional argument to `codex exec`.
+// positional argument to the analysis backend CLI.
 func BuildPrompt(intent string, diffs map[string]string) string {
 	var b strings.Builder
 
@@ -35,7 +34,7 @@ func BuildPrompt(intent string, diffs map[string]string) string {
 	b.WriteString("2. Search the codebase for all usages of those symbols\n")
 	b.WriteString("3. Reason about whether those call sites are still compatible with the changes\n")
 	b.WriteString("4. Check if any shared utilities, interfaces, or contracts were silently altered\n")
-	b.WriteString("5. Assess whether the changes match the stated intent\n")
+	b.WriteString("5. Assess whether the changes match the stated intent and no other existing functionality is broken.\n")
 	b.WriteString("\n")
 	b.WriteString("Respond ONLY with a JSON object matching the provided schema.")
 

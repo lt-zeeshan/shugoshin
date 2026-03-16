@@ -6,13 +6,13 @@ Shugoshin (守護神, "guardian deity") is a blast radius analyser that sits alo
 
 ## Core Concept
 
-When Claude Code fixes a bug or implements a feature, it tends to be fix-focused. It solves the immediate problem but doesn't always reason about what else in the codebase depends on what it changed. Shugoshin fills that gap by invoking a second AI (Codex CLI) after every Claude Code response to analyse the blast radius of the changes made.
+When Claude Code fixes a bug or implements a feature, it tends to be fix-focused. It solves the immediate problem but doesn't always reason about what else in the codebase depends on what it changed. Shugoshin fills that gap by invoking a second AI after every Claude Code response to analyse the blast radius of the changes made. The analysis backend is configurable — currently Codex CLI and Claude Code (`claude -p`) are supported, with a simple factory pattern that makes adding future backends trivial.
 
 ---
 
 ## Architecture Overview
 
-Three Claude Code hooks feed a shared session-scoped state file. On every Stop event where files were modified, Codex CLI is invoked as a subprocess to produce a structured verdict. Verdicts are persisted as JSON reports. A manually-invoked TUI reads those reports and presents them for review.
+Three Claude Code hooks feed a shared session-scoped state file. On every Stop event where files were modified, the configured analysis backend (Codex CLI or Claude Code) is invoked as a subprocess to produce a structured verdict. Verdicts are persisted as JSON reports. A manually-invoked TUI reads those reports and presents them for review.
 
 ```
 UserPromptSubmit  →  capture intent → write to state file
@@ -25,7 +25,8 @@ PostToolUse (Edit|Write|MultiEdit)  →  append changed file to state file
 Stop  →  read intent + changes from state file
       →  check stop_hook_active (exit 0 if true, prevent infinite loop)
       →  check if any files were modified (exit 0 if none)
-      →  invoke `codex exec` subprocess
+      →  load backend from .shugoshin/settings.json
+      →  invoke analysis backend subprocess (codex exec or claude -p)
       →  write structured JSON verdict to reports directory
       →  clear current-response changelist from state file
       →  print one-line summary to terminal
@@ -45,12 +46,13 @@ All Shugoshin files live under `.shugoshin/` at the project root.
 
 ```
 .shugoshin/
+  settings.json             ← backend selection and user preferences
   hooks/
     (hook logic is built into the shugoshin binary, invoked as subcommands)
   schemas/
-    verdict.json          ← JSON Schema for codex exec --output-schema
+    verdict.json            ← JSON Schema for structured output
   state/
-    {session_id}.json     ← ephemeral per-session state (gitignored)
+    {session_id}.json       ← ephemeral per-session state (gitignored)
   reports/
     {session_id}/
       {timestamp}-{index}.json   ← one verdict file per Stop event
@@ -69,23 +71,31 @@ shugoshin/
     shugoshin/
       main.go             ← entry point, subcommand routing
   internal/
+    analyser/
+      analyser.go         ← Analyser interface, New() factory, shared parseVerdict()
+      codex.go            ← CodexAnalyser — Codex CLI backend
+      claude.go           ← ClaudeAnalyser — Claude Code backend
+      prompt.go           ← BuildPrompt() — shared prompt builder
+      schema.go           ← //go:embed verdict.json
+      verdict.json        ← JSON Schema for structured output
+    config/
+      config.go           ← Settings Load/Save (.shugoshin/settings.json)
     hooks/
       submit.go           ← UserPromptSubmit handler
       posttool.go         ← PostToolUse handler
       stop.go             ← Stop handler, orchestrates analysis
+      analyse.go          ← Background analysis subprocess handler
     state/
       manager.go          ← read/write session state JSON
     reports/
       writer.go           ← write verdict JSON to reports dir
       reader.go           ← read and list reports for TUI
-    codex/
-      executor.go         ← codex exec subprocess wrapper
     tui/
-      model.go            ← Bubble Tea model
-      view.go             ← rendering
-      update.go           ← keyboard and event handling
+      model.go            ← Bubble Tea model (includes backend field)
+      view.go             ← rendering (shows active backend)
+      update.go           ← keyboard and event handling (b key for backend)
     init/
-      init.go             ← shugoshin init logic
+      init.go             ← shugoshin init logic (creates settings.json)
       deinit.go           ← shugoshin deinit logic
       cleanup.go          ← shugoshin cleanup logic
   go.mod
@@ -161,11 +171,12 @@ shugoshin hook stop          ← called by Stop hook (reads stdin JSON)
 1. Check if `.shugoshin/` already exists — if so, warn and ask for confirmation before proceeding
 2. Create `.shugoshin/` directory structure
 3. Copy `verdict.json` schema to `.shugoshin/schemas/`
-4. Read `.claude/settings.json` (create it if it does not exist)
-5. Merge hook entries tagged with `_shugoshin: true` — do not duplicate if already present
-6. Write `.claude/settings.json` back
-7. Add `.shugoshin/state/` to `.gitignore`
-8. Print confirmation of what was done
+4. Write `.shugoshin/settings.json` with default backend (`claude`) if not already present
+5. Read `.claude/settings.json` (create it if it does not exist)
+6. Merge hook entries tagged with `_shugoshin: true` — do not duplicate if already present
+7. Write `.claude/settings.json` back
+8. Add `.shugoshin/state/` to `.gitignore`
+9. Print confirmation of what was done
 
 ### `shugoshin deinit` behaviour
 
@@ -258,6 +269,57 @@ After a Stop event is processed, `current_intent` and `current_changes` are clea
 
 ---
 
+## Settings File
+
+`.shugoshin/settings.json`
+
+```json
+{
+  "backend": "claude"
+}
+```
+
+Created by `shugoshin init` with the default backend. Supported values: `"claude"` (default), `"codex"`. Unknown values are normalised to `"claude"` on load.
+
+The backend can be changed by:
+- Editing `.shugoshin/settings.json` directly
+- Pressing `b` in the TUI to cycle between backends
+
+### Analyser Interface & Factory
+
+All backends implement the `Analyser` interface:
+
+```go
+type Analyser interface {
+    Analyse(ctx context.Context, intent string, diffs map[string]string, schemaPath string) (*types.Verdict, error)
+    Name() string
+}
+```
+
+`analyser.New(backend)` returns the correct implementation. The factory defaults to Claude for unrecognised values.
+
+### Backend: Codex (`"codex"`)
+
+```bash
+codex exec --ephemeral --full-auto --output-schema {schemaPath} "{prompt}"
+```
+
+- Uses a lean CODEX_HOME with no MCP servers for fast startup
+- Symlinks auth from `~/.codex/auth.json`
+
+### Backend: Claude (`"claude"`)
+
+```bash
+claude -p --output-format json --json-schema {schemaPath} "{prompt}"
+```
+
+- No special home directory setup needed
+- Same prompt, same timeout (240s), same verdict parsing
+
+Both backends share `BuildPrompt()`, `parseVerdict()`, and the embedded verdict JSON schema.
+
+---
+
 ## Stop Hook Logic (detailed)
 
 ```
@@ -265,11 +327,12 @@ After a Stop event is processed, `current_intent` and `current_changes` are clea
 2. If stop_hook_active == true → exit 0 immediately (prevent infinite loop)
 3. Load state file for this session_id
 4. If current_changes is empty → exit 0 (no files modified, skip analysis)
-5. For each file in current_changes, generate a git diff (git diff HEAD -- <file>)
+5. Load backend from .shugoshin/settings.json (defaults to "codex")
+6. For each file in current_changes, generate a git diff (git diff HEAD -- <file>)
    If git diff is empty (file is untracked), read the full file content as the diff
-6. Build Codex prompt (see below)
-7. Invoke codex exec subprocess (see below)
-8. Parse structured JSON response from codex exec
+7. Build analysis prompt (shared across backends)
+8. Invoke analysis backend subprocess (codex exec or claude -p)
+9. Parse structured JSON response
 9. Write verdict JSON to .shugoshin/reports/{session_id}/{timestamp}-{index}.json
 10. Print one-line summary to stdout (visible in Claude Code transcript)
 11. Clear current_intent and current_changes from state file, increment response_index
@@ -278,27 +341,38 @@ After a Stop event is processed, `current_intent` and `current_changes` are clea
 
 ---
 
-## Codex CLI Invocation
+## Backend CLI Invocation
+
+### Codex backend
 
 ```bash
 codex exec \
   --ephemeral \
-  -c disable_mcp=true \
   --full-auto \
   --output-schema .shugoshin/schemas/verdict.json \
   "{prompt}"
 ```
 
-### Guardrails for Codex
+Uses a lean CODEX_HOME at `$TMPDIR/shugoshin-codex` with no MCP servers configured for fast startup. Auth is symlinked from `~/.codex/auth.json`.
 
-- `--ephemeral` — no session state persists between analyses
-- `-c disable_mcp=true` — disables MCP server startup for fast execution (users keep MCP servers for normal Codex usage)
-- `--full-auto` — Codex must not pause and wait for human input; this runs in an automated hook context
-- `--output-schema` — forces structured JSON output matching the verdict schema
-- Codex runs in read-only mode by default (`codex exec` defaults to read-only sandbox) — it must NOT modify any files
-- The prompt explicitly instructs Codex to only read and analyse, never write or execute commands
-- Timeout: set an explicit timeout on the subprocess (suggested: 120 seconds). If Codex exceeds it, write a verdict of `TIMEOUT` and move on. Never block Claude Code indefinitely.
-- If Codex exits with a non-zero code or produces invalid JSON, write a verdict of `ERROR` with the raw output captured. Never crash the hook silently.
+### Claude backend
+
+```bash
+claude -p \
+  --output-format json \
+  --json-schema .shugoshin/schemas/verdict.json \
+  "{prompt}"
+```
+
+No special home directory setup needed.
+
+### Shared guardrails (both backends)
+
+- `--output-schema` / `--json-schema` — forces structured JSON output matching the verdict schema
+- The prompt explicitly instructs the analyser to only read and analyse, never write or execute commands
+- Timeout: 600 seconds (10 minutes). If the backend exceeds it, write a verdict of `TIMEOUT` and move on. Never block Claude Code indefinitely.
+- If the backend exits with a non-zero code or produces invalid JSON, write a verdict of `ERROR` with the raw output captured. Never crash the hook silently.
+- Analysis runs as a detached background subprocess so the Stop hook returns in milliseconds.
 
 ### Prompt Structure
 
@@ -415,13 +489,13 @@ Respond ONLY with a JSON object matching the provided schema.
 
 ## TUI Design
 
-Invoked manually with `shugoshin` from the project root. Reads `.shugoshin/reports/` for the current directory. No background process, no file watching — point-in-time reader.
+Invoked manually with `shugoshin` from the project root. Reads `.shugoshin/reports/` for the current directory and `.shugoshin/settings.json` for the active backend. No background process, no file watching — point-in-time reader.
 
 ### Layout
 
 ```
 ┌─ Shugoshin — my-project ─────────────────────────────────────────┐
-│ Session: abc123   Branch: feature/auth    2026-03-14             │
+│ Session: abc123   Filter: ALL   Backend: codex   3 reports       │
 ├───────────────────────────────────────────────────────────────────┤
 │  ●  SAFE          fix the null check in user.go          13:02   │
 │  ▲  REVIEW        refactor auth middleware                13:15   │
@@ -445,7 +519,7 @@ Invoked manually with `shugoshin` from the project root. Reads `.shugoshin/repor
 │                                                                   │
 │ Changed files: auth/token.go  middleware/session.go               │
 └───────────────────────────────────────────────────────────────────┘
-  ↑↓ navigate   enter expand/collapse   s filter by session   q quit
+  ↑↓ navigate   enter expand   s session   f filter   b backend   r reload   q quit
 ```
 
 ### Colour coding
@@ -457,16 +531,22 @@ Invoked manually with `shugoshin` from the project root. Reads `.shugoshin/repor
 
 ### Keyboard navigation
 
-- `↑` / `↓` — navigate list
+- `↑` / `↓` / `k` / `j` — navigate list (or scroll detail pane when expanded)
 - `Enter` — expand/collapse detail pane
-- `s` — filter by session (cycle through sessions)
-- `f` — filter by verdict (ALL → HIGH_RISK only → REVIEW_NEEDED+ → ALL)
+- `Esc` — close detail pane
+- `s` — cycle session filter (all sessions → session 1 → session 2 → ...)
+- `f` — cycle verdict filter (ALL → HIGH_RISK only → REVIEW_NEEDED+ → ALL)
+- `b` — cycle analysis backend (claude → codex → claude) and persist to settings.json
 - `r` — reload reports from disk
 - `q` — quit
 
 ### Session grouping
 
 The TUI groups reports by session ID. When multiple sessions exist for the same project, they are shown as collapsible groups, newest first.
+
+### Backend toggle
+
+The `b` key cycles through available backends (`codex` → `claude` → `codex`). The change is persisted to `.shugoshin/settings.json` immediately and takes effect on the next analysis. The header bar displays the active backend at all times. Unknown values in settings.json are normalised to `claude`.
 
 ---
 
@@ -492,8 +572,9 @@ Avoid unnecessary dependencies. JSON, file I/O, subprocess invocation, and direc
 
 - Hook scripts must never crash silently. Always exit 0 unless you have a specific reason to signal Claude Code.
 - If the state file does not exist at PostToolUse or Stop time, create it rather than erroring.
-- If Codex times out, write a `TIMEOUT` verdict and continue. Never leave Claude Code hanging.
-- If Codex produces malformed JSON, write an `ERROR` verdict with raw output captured in `reasoning`.
+- If the analysis backend times out, write a `TIMEOUT` verdict and continue. Never leave Claude Code hanging.
+- If the backend produces malformed JSON, write an `ERROR` verdict with raw output captured in `reasoning`.
+- If `.shugoshin/settings.json` contains an unrecognised backend value, normalise to `claude` on load.
 - If `.claude/settings.json` does not exist at `shugoshin init` time, create it with just the Shugoshin hook entries.
 - If `shugoshin deinit` is run but no Shugoshin hooks are found, exit gracefully with a message rather than erroring.
 
@@ -512,7 +593,7 @@ Avoid unnecessary dependencies. JSON, file I/O, subprocess invocation, and direc
 ### Phase 2 (future, not in scope now)
 - Blocking mode — Stop hook can return `decision: block` to force Claude Code to re-examine changes when verdict is HIGH_RISK
 - Configurable risk threshold for blocking
-- Per-project configuration file `.shugoshin/config.toml`
+- Additional analysis backends (Gemini CLI, local models, etc.)
 - Report export to markdown for PR descriptions
 
 ---

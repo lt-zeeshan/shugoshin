@@ -3,6 +3,7 @@ package tui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/zeeshans/shugoshin/internal/config"
 	"github.com/zeeshans/shugoshin/internal/types"
 )
 
@@ -23,11 +24,12 @@ type Model struct {
 	filtered      []*types.Report
 	cursor        int
 	expanded      bool
-	detailScroll  int // scroll offset within detail pane
+	detailScroll  int    // scroll offset within detail pane
 	verdictFilter string // "" = ALL, "HIGH_RISK", "REVIEW_NEEDED+"
 	sessionFilter string // "" = all sessions
 	sessions      []string
 	sessionIdx    int
+	backend       string // active analysis backend ("codex", "claude")
 	baseDir       string
 	width         int
 	height        int
@@ -36,8 +38,13 @@ type Model struct {
 
 // New creates a Model ready to be run with tea.NewProgram.
 func New(baseDir string, loader ReportLoader) Model {
+	backend := config.DefaultBackend
+	if s, err := config.Load(baseDir); err == nil {
+		backend = s.Backend
+	}
 	return Model{
 		baseDir:     baseDir,
+		backend:     backend,
 		loadReports: loader,
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/zeeshans/shugoshin/internal/analyser"
 	"github.com/zeeshans/shugoshin/internal/logger"
 	"github.com/zeeshans/shugoshin/internal/reports"
+	"github.com/zeeshans/shugoshin/internal/tracking"
 	"github.com/zeeshans/shugoshin/internal/types"
 )
 
@@ -31,7 +32,16 @@ func HandleAnalyse(reqPath string, executor analyser.Analyser) error {
 	}
 
 	logger.Init(req.BaseDir)
-	logger.Info("background analysis started session_id=%s file_count=%d backend=%s", req.SessionID, len(req.Diffs), req.Backend)
+	logger.Info("background analysis started session_id=%s file_count=%d backend=%s", req.SessionID, len(req.ChangedFiles), req.Backend)
+
+	_ = tracking.WriteMarker(req.BaseDir, &tracking.AnalysisStatus{
+		PID:       os.Getpid(),
+		StartTime: time.Now().Unix(),
+		FileCount: len(req.ChangedFiles),
+		Backend:   req.Backend,
+		SessionID: req.SessionID,
+	})
+	defer tracking.RemoveMarker(req.BaseDir, req.SessionID)
 
 	if executor == nil {
 		executor = analyser.New(req.Backend)
@@ -39,7 +49,7 @@ func HandleAnalyse(reqPath string, executor analyser.Analyser) error {
 
 	schemaPath := req.BaseDir + "/schemas/verdict.json"
 
-	verdict, err := executor.Analyse(context.Background(), req.Intent, req.Diffs, schemaPath)
+	verdict, err := executor.Analyse(context.Background(), req.Intent, req.ChangedFiles, schemaPath)
 	if err != nil {
 		logger.Error("analysis: %v", err)
 		return nil

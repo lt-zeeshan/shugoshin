@@ -19,8 +19,8 @@ type ClaudeAnalyser struct{}
 
 func (ClaudeAnalyser) Name() string { return "claude" }
 
-func (ClaudeAnalyser) Analyse(ctx context.Context, intent string, diffs map[string]string, schemaPath string) (*types.Verdict, error) {
-	prompt := BuildPrompt(intent, diffs)
+func (ClaudeAnalyser) Analyse(ctx context.Context, intent string, changedFiles []string, schemaPath string) (*types.Verdict, error) {
+	prompt := BuildPrompt(intent, changedFiles)
 
 	timeoutCtx, cancel := context.WithTimeout(ctx, analyseTimeout)
 	defer cancel()
@@ -33,6 +33,7 @@ func (ClaudeAnalyser) Analyse(ctx context.Context, intent string, diffs map[stri
 		timeoutCtx,
 		"claude", "-p",
 		"--output-format", "json",
+		"--allowedTools", "View,Read,Glob,Grep,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*)",
 		"--json-schema", schema,
 	)
 	// Pipe the prompt via stdin to avoid CLI arg length limits.
@@ -63,6 +64,13 @@ func (ClaudeAnalyser) Analyse(ctx context.Context, intent string, diffs map[stri
 	}
 
 	logger.Info("claude completed in %s", elapsed.Round(time.Millisecond))
+	if stderr.Len() > 0 {
+		s := stderr.String()
+		if len(s) > 200 {
+			s = s[:200] + "... (truncated)"
+		}
+		logger.Debug("claude stderr: %s", s)
+	}
 	return parseClaudeOutput(stdout.Bytes())
 }
 

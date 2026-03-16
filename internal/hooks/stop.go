@@ -18,19 +18,18 @@ import (
 // AnalyseRequest is serialised to a temp file and passed to the background
 // analyse subprocess.
 type AnalyseRequest struct {
-	Backend       string            `json:"backend"`
-	BaseDir       string            `json:"base_dir"`
-	SessionID     string            `json:"session_id"`
-	Cwd           string            `json:"cwd"`
-	Intent        string            `json:"intent"`
-	ChangedFiles  []string          `json:"changed_files"`
-	Diffs         map[string]string `json:"diffs"`
-	ResponseIndex int               `json:"response_index"`
+	Backend       string   `json:"backend"`
+	BaseDir       string   `json:"base_dir"`
+	SessionID     string   `json:"session_id"`
+	Cwd           string   `json:"cwd"`
+	Intent        string   `json:"intent"`
+	ChangedFiles  []string `json:"changed_files"`
+	ResponseIndex int      `json:"response_index"`
 }
 
-// HandleStop processes a Stop hook event. It reads the payload, builds diffs,
-// clears session state, and spawns a background subprocess for the slow
-// analysis. The hook itself exits in milliseconds.
+// HandleStop processes a Stop hook event. It reads the payload, collects
+// changed file paths, clears session state, and spawns a background subprocess
+// for analysis. The hook itself exits in milliseconds.
 func HandleStop(r io.Reader) (retErr error) {
 	defer func() {
 		recover() //nolint:errcheck
@@ -75,33 +74,16 @@ func HandleStop(r io.Reader) (retErr error) {
 		settings = &config.Settings{Backend: config.DefaultBackend}
 	}
 
-	// Build diffs synchronously (fast — just git commands).
-	diffs := make(map[string]string, len(s.CurrentChanges))
+	// Normalise absolute paths to relative for the analysis prompt.
+	changedFiles := make([]string, 0, len(s.CurrentChanges))
 	for _, file := range s.CurrentChanges {
-		relFile := file
+		rel := file
 		if filepath.IsAbs(file) {
-			if rel, err := filepath.Rel(payload.Cwd, file); err == nil {
-				relFile = rel
+			if r, err := filepath.Rel(payload.Cwd, file); err == nil {
+				rel = r
 			}
 		}
-		logger.Debug("generating diff for %s", relFile)
-		cmd := exec.Command("git", "diff", "HEAD", "--", relFile)
-		cmd.Dir = payload.Cwd
-		out, err := cmd.Output()
-		if err != nil || len(out) == 0 {
-			absFile := relFile
-			if !filepath.IsAbs(relFile) {
-				absFile = filepath.Join(payload.Cwd, relFile)
-			}
-			content, readErr := os.ReadFile(absFile)
-			if readErr != nil {
-				logger.Error("reading untracked file %s: %v", relFile, readErr)
-				continue
-			}
-			diffs[relFile] = string(content)
-		} else {
-			diffs[relFile] = string(out)
-		}
+		changedFiles = append(changedFiles, rel)
 	}
 
 	// Ensure the on-disk schema matches the embedded version.
@@ -120,8 +102,7 @@ func HandleStop(r io.Reader) (retErr error) {
 		SessionID:     s.SessionID,
 		Cwd:           s.Cwd,
 		Intent:        s.CurrentIntent,
-		ChangedFiles:  s.CurrentChanges,
-		Diffs:         diffs,
+		ChangedFiles:  changedFiles,
 		ResponseIndex: s.ResponseIndex,
 	}
 	reqData, err := json.Marshal(req)
@@ -159,8 +140,8 @@ func HandleStop(r io.Reader) (retErr error) {
 		_ = bgCmd.Wait()
 	}()
 
-	logger.Info("spawned background analysis pid=%d file_count=%d backend=%s", bgCmd.Process.Pid, len(diffs), settings.Backend)
-	fmt.Printf("[shugoshin] analysing %d changed files in background (backend: %s)...\n", len(diffs), settings.Backend)
+	logger.Info("spawned background analysis pid=%d file_count=%d backend=%s", bgCmd.Process.Pid, len(changedFiles), settings.Backend)
+	fmt.Printf("[shugoshin] analysing %d changed files in background (backend: %s)...\n", len(changedFiles), settings.Backend)
 
 	return nil
 }

@@ -33,7 +33,7 @@ func HandlePostTool(r io.Reader) (retErr error) {
 	baseDir := filepath.Join(payload.Cwd, ".shugoshin")
 	logger.Init(baseDir)
 
-	logger.Info("handling posttool hook session_id=%s tool_name=%s", payload.SessionID, payload.ToolName)
+	logger.Debug("handling posttool hook session_id=%s tool_name=%s", payload.SessionID, payload.ToolName)
 
 	filePath, ok := payload.ToolInput["file_path"].(string)
 	if !ok || filePath == "" {
@@ -49,7 +49,7 @@ func HandlePostTool(r io.Reader) (retErr error) {
 
 	if !containsString(s.CurrentChanges, filePath) {
 		s.CurrentChanges = append(s.CurrentChanges, filePath)
-		logger.Debug("tracked file change: %s", filePath)
+		logger.Info("tracked new file: %s", filePath)
 	}
 
 	if err := state.Save(baseDir, s); err != nil {

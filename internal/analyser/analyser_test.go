@@ -30,42 +30,36 @@ func TestNew(t *testing.T) {
 
 func TestBuildPrompt(t *testing.T) {
 	tests := []struct {
-		name     string
-		intent   string
-		diffs    map[string]string
-		contains []string
+		name         string
+		intent       string
+		changedFiles []string
+		contains     []string
 	}{
 		{
-			name:   "single file",
-			intent: "fix the null pointer bug in user.go",
-			diffs: map[string]string{
-				"internal/user/user.go": "-\treturn user\n+\tif user == nil { return nil, ErrNotFound }\n+\treturn user, nil",
-			},
+			name:         "single file",
+			intent:       "fix the null pointer bug in user.go",
+			changedFiles: []string{"internal/user/user.go"},
 			contains: []string{
 				"fix the null pointer bug in user.go",
 				"internal/user/user.go",
-				"-\treturn user",
-				"YOUR ANALYSIS TASKS:",
-				"1. Identify every function",
-				"2. Search the codebase",
-				"3. Reason about whether",
-				"4. Check if any shared utilities",
-				"5. Assess whether the changes",
+				"git diff HEAD -- <file>",
+				"STEPS:",
+				"search the codebase for all callers",
+				"shared interfaces, contracts",
+				"operational and runtime risks",
+				"Verify the changes match the stated intent",
 				"Respond ONLY with a JSON object matching the provided schema.",
 			},
 		},
 		{
-			name:   "multiple files",
-			intent: "refactor auth middleware",
-			diffs: map[string]string{
-				"middleware/auth.go":  "+func NewMiddleware() *Middleware {",
-				"middleware/token.go": "-func Validate(t string) bool {",
-			},
+			name:         "multiple files",
+			intent:       "refactor auth middleware",
+			changedFiles: []string{"middleware/auth.go", "middleware/token.go"},
 			contains: []string{
 				"refactor auth middleware",
 				"middleware/auth.go",
 				"middleware/token.go",
-				"CHANGED FILES AND DIFFS:",
+				"CHANGED FILES:",
 				"TASK INTENT:",
 			},
 		},
@@ -73,7 +67,7 @@ func TestBuildPrompt(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := BuildPrompt(tt.intent, tt.diffs)
+			got := BuildPrompt(tt.intent, tt.changedFiles)
 			for _, want := range tt.contains {
 				if !strings.Contains(got, want) {
 					t.Errorf("BuildPrompt() output missing %q\nfull output:\n%s", want, got)
@@ -83,15 +77,15 @@ func TestBuildPrompt(t *testing.T) {
 	}
 }
 
-func TestBuildPrompt_EmptyDiffs(t *testing.T) {
+func TestBuildPrompt_EmptyFiles(t *testing.T) {
 	intent := "add unit tests"
-	got := BuildPrompt(intent, map[string]string{})
+	got := BuildPrompt(intent, nil)
 
 	mustContain := []string{
 		intent,
 		"TASK INTENT:",
-		"CHANGED FILES AND DIFFS:",
-		"YOUR ANALYSIS TASKS:",
+		"CHANGED FILES:",
+		"STEPS:",
 		"Respond ONLY with a JSON object matching the provided schema.",
 	}
 	for _, want := range mustContain {
@@ -217,6 +211,70 @@ func TestParseVerdict_InvalidJSON(t *testing.T) {
 			}
 			if got.Reasoning != tt.raw {
 				t.Errorf("Reasoning = %q, want raw input %q", got.Reasoning, tt.raw)
+			}
+		})
+	}
+}
+
+func TestParseClaudeOutput(t *testing.T) {
+	tests := []struct {
+		name          string
+		raw           string
+		wantVerdict   string
+		wantSummary   string
+		wantReasoning string
+	}{
+		{
+			name:          "valid envelope with structured_output",
+			raw:           `{"result":"","structured_output":{"verdict":"SAFE","summary":"ok","affected_areas":[],"intent_match":true,"reasoning":"fine"},"is_error":false}`,
+			wantVerdict:   "SAFE",
+			wantSummary:   "ok",
+			wantReasoning: "fine",
+		},
+		{
+			name:          "empty structured_output falls back to result",
+			raw:           `{"result":"{\"verdict\":\"REVIEW_NEEDED\",\"summary\":\"check callers\",\"affected_areas\":[],\"intent_match\":false,\"reasoning\":\"signature changed\"}","is_error":false}`,
+			wantVerdict:   "REVIEW_NEEDED",
+			wantSummary:   "check callers",
+			wantReasoning: "signature changed",
+		},
+		{
+			name:          "is_error true returns ERROR verdict with result as reasoning",
+			raw:           `{"result":"something went wrong","structured_output":null,"is_error":true}`,
+			wantVerdict:   "ERROR",
+			wantSummary:   "Claude returned an error",
+			wantReasoning: "something went wrong",
+		},
+		{
+			name:          "invalid outer envelope JSON returns ERROR with raw bytes in reasoning",
+			raw:           `not valid json at all`,
+			wantVerdict:   "ERROR",
+			wantSummary:   "Invalid JSON envelope from Claude",
+			wantReasoning: "not valid json at all",
+		},
+		{
+			name:          "structured_output contains invalid verdict JSON returns ERROR",
+			raw:           `{"result":"","structured_output":"this is not a verdict object","is_error":false}`,
+			wantVerdict:   "ERROR",
+			wantSummary:   "Invalid JSON from analyser",
+			wantReasoning: `"this is not a verdict object"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseClaudeOutput([]byte(tt.raw))
+			if err != nil {
+				t.Fatalf("parseClaudeOutput() returned unexpected Go error: %v", err)
+			}
+			if got.Verdict != tt.wantVerdict {
+				t.Errorf("Verdict = %q, want %q", got.Verdict, tt.wantVerdict)
+			}
+			if got.Summary != tt.wantSummary {
+				t.Errorf("Summary = %q, want %q", got.Summary, tt.wantSummary)
+			}
+			if got.Reasoning != tt.wantReasoning {
+				t.Errorf("Reasoning = %q, want %q", got.Reasoning, tt.wantReasoning)
 			}
 		})
 	}

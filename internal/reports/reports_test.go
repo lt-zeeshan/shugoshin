@@ -287,3 +287,114 @@ func TestWriteReportIndentedJSON(t *testing.T) {
 		t.Error("report file does not appear to be indented (no leading spaces found)")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// UpdateReport
+// ---------------------------------------------------------------------------
+
+func TestUpdateReport(t *testing.T) {
+	t.Parallel()
+
+	t.Run("persists Resolved=true", func(t *testing.T) {
+		t.Parallel()
+		baseDir := t.TempDir()
+		ts := time.Date(2026, 3, 14, 14, 0, 0, 0, time.UTC)
+		r := makeReport(t, "sess-upd", 0, ts)
+		path, err := reports.WriteReport(baseDir, r)
+		if err != nil {
+			t.Fatalf("WriteReport() error = %v", err)
+		}
+		r.FilePath = path
+
+		r.Resolved = true
+		if err := reports.UpdateReport(r); err != nil {
+			t.Fatalf("UpdateReport() unexpected error = %v", err)
+		}
+
+		all, err := reports.ListReports(baseDir)
+		if err != nil {
+			t.Fatalf("ListReports() error = %v", err)
+		}
+		if len(all) != 1 {
+			t.Fatalf("expected 1 report, got %d", len(all))
+		}
+		if !all[0].Resolved {
+			t.Error("Resolved field was not persisted by UpdateReport")
+		}
+	})
+
+	t.Run("empty FilePath returns error", func(t *testing.T) {
+		t.Parallel()
+		r := &types.Report{SessionID: "sess-nopath"}
+		if err := reports.UpdateReport(r); err == nil {
+			t.Fatal("UpdateReport() expected error for empty FilePath, got nil")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// DeleteReport
+// ---------------------------------------------------------------------------
+
+func TestDeleteReport(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		setup   func(t *testing.T) (baseDir string, r *types.Report)
+		verify  func(t *testing.T, baseDir string)
+		wantErr bool
+	}{
+		{
+			name: "written report is removed from ListReports",
+			setup: func(t *testing.T) (string, *types.Report) {
+				t.Helper()
+				baseDir := t.TempDir()
+				ts := time.Date(2026, 3, 14, 15, 0, 0, 0, time.UTC)
+				r := makeReport(t, "sess-del", 0, ts)
+				path, err := reports.WriteReport(baseDir, r)
+				if err != nil {
+					t.Fatalf("WriteReport() error = %v", err)
+				}
+				r.FilePath = path
+				return baseDir, r
+			},
+			verify: func(t *testing.T, baseDir string) {
+				t.Helper()
+				all, err := reports.ListReports(baseDir)
+				if err != nil {
+					t.Fatalf("ListReports() after delete error = %v", err)
+				}
+				if len(all) != 0 {
+					t.Errorf("expected 0 reports after delete, got %d", len(all))
+				}
+			},
+		},
+		{
+			name: "empty FilePath returns error",
+			setup: func(t *testing.T) (string, *types.Report) {
+				return "", &types.Report{SessionID: "sess-nopath-del"}
+			},
+			verify:  func(t *testing.T, _ string) {},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			baseDir, r := tt.setup(t)
+			err := reports.DeleteReport(r)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("DeleteReport() expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("DeleteReport() unexpected error = %v", err)
+			}
+			tt.verify(t, baseDir)
+		})
+	}
+}

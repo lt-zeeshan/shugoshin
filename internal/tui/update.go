@@ -5,6 +5,7 @@ import (
 	"github.com/zeeshans/shugoshin/internal/analyser"
 	"github.com/zeeshans/shugoshin/internal/config"
 	"github.com/zeeshans/shugoshin/internal/reports"
+	"github.com/zeeshans/shugoshin/internal/tracking"
 	"github.com/zeeshans/shugoshin/internal/types"
 )
 
@@ -25,6 +26,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.reports = msg.reports
+		m.analysing = msg.analysing
 		m.sessions = uniqueSessions(msg.reports)
 		m.cursor = 0
 		m.expanded = false
@@ -70,7 +72,7 @@ func handleKey(m Model, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.detailScroll = 0
 		}
 
-	case "esc":
+	case "esc", "backspace":
 		if m.expanded {
 			m.expanded = false
 			m.detailScroll = 0
@@ -100,6 +102,13 @@ func handleKey(m Model, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.verdictFilter = next
+		m.cursor = 0
+		m.expanded = false
+		m.detailScroll = 0
+		applyFilters(&m)
+
+	case "h":
+		m.hideResolved = !m.hideResolved
 		m.cursor = 0
 		m.expanded = false
 		m.detailScroll = 0
@@ -146,7 +155,7 @@ func handleKey(m Model, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.detailScroll = 0
 		return m, func() tea.Msg {
 			reports, err := m.loadReports(m.baseDir)
-			return reportsLoadedMsg{reports: reports, err: err}
+			return reportsLoadedMsg{reports: reports, analysing: tracking.ListActive(m.baseDir), err: err}
 		}
 
 	case "q", "ctrl+c":
@@ -165,6 +174,9 @@ func applyFilters(m *Model) {
 			continue
 		}
 		if !matchesVerdictFilter(r.Verdict.Verdict, m.verdictFilter) {
+			continue
+		}
+		if m.hideResolved && r.Resolved {
 			continue
 		}
 		out = append(out, r)

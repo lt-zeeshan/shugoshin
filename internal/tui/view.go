@@ -93,14 +93,28 @@ func renderHeader(m Model, inner int) string {
 	bar1 := lipgloss.NewStyle().Bold(true).Foreground(colorWhite).Render(title)
 
 	count := fmt.Sprintf("%d reports", len(m.filtered))
-	meta := fmt.Sprintf(" Session: %-16s  Filter: %-14s  Backend: %-6s  %s", session, filter, m.backend, count)
-	meta = styleDim.Render(meta)
+	metaStr := fmt.Sprintf(" Session: %-16s  Filter: %-14s  Backend: %-6s  %s", session, filter, m.backend, count)
+	if m.hideResolved {
+		metaStr += "  (hiding resolved)"
+	}
+	meta := styleDim.Render(metaStr)
 
 	sep := strings.Repeat("─", max(0, inner-lipgloss.Width(title)))
 
-	return "┌" + bar1 + sep + "┐\n" +
-		"│" + padRight(meta, inner) + "│\n" +
-		"├" + strings.Repeat("─", inner) + "┤\n"
+	header := "┌" + bar1 + sep + "┐\n" +
+		"│" + padRight(meta, inner) + "│\n"
+
+	if len(m.analysing) > 0 {
+		total := 0
+		for _, a := range m.analysing {
+			total += a.FileCount
+		}
+		status := styleDim.Render(fmt.Sprintf(" ⟳ Analysing %d files in background...", total))
+		header += "│" + padRight(status, inner) + "│\n"
+	}
+
+	header += "├" + strings.Repeat("─", inner) + "┤\n"
+	return header
 }
 
 // ---------------------------------------------------------------------------
@@ -338,9 +352,9 @@ func renderFooter(inner int) string {
 
 func renderHelp(expanded bool) string {
 	if expanded {
-		return styleDim.Render("  ↑↓ scroll  esc/enter close  x resolve  d delete  s session  f filter  b backend  r reload  q quit")
+		return styleDim.Render("  ↑↓ scroll  esc/enter close  x resolve  d delete  h hide resolved  s session  f filter  b backend  r reload  q quit")
 	}
-	return styleDim.Render("  ↑↓ navigate  enter expand  x resolve  d delete  s session  f filter  b backend  r reload  q quit")
+	return styleDim.Render("  ↑↓ navigate  enter expand  x resolve  d delete  h hide resolved  s session  f filter  b backend  r reload  q quit")
 }
 
 // ---------------------------------------------------------------------------

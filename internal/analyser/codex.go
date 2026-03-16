@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/zeeshans/shugoshin/internal/logger"
@@ -37,19 +38,19 @@ func SetupLeanHome() error {
 		return fmt.Errorf("creating codex home %s: %w", dir, err)
 	}
 
-	// Symlink auth from real codex home.
+	// Copy auth from real codex home (never symlink — prevents accidental
+	// write-through if codex truncates the file during auth refresh).
 	realHome, _ := os.UserHomeDir()
 	realAuth := filepath.Join(realHome, ".codex", "auth.json")
-	link := filepath.Join(dir, "auth.json")
-	_ = os.Remove(link)
-	if err := os.Symlink(realAuth, link); err != nil {
-		// Fall back to copy if symlink fails.
-		data, readErr := os.ReadFile(realAuth)
-		if readErr != nil {
-			return fmt.Errorf("reading codex auth: %w", readErr)
-		}
-		_ = os.WriteFile(link, data, 0o600)
+	dest := filepath.Join(dir, "auth.json")
+	data, readErr := os.ReadFile(realAuth)
+	if readErr != nil {
+		return fmt.Errorf("reading codex auth: %w", readErr)
 	}
+	if len(data) == 0 {
+		return fmt.Errorf("codex auth file is empty: %s", realAuth)
+	}
+	_ = os.WriteFile(dest, data, 0o600)
 
 	// Minimal config — just the model, no MCP servers.
 	cfg := filepath.Join(dir, "config.toml")
@@ -65,8 +66,8 @@ func RemoveLeanHome() error {
 
 // Analyse builds the prompt, spawns `codex exec`, and parses its structured
 // JSON output.
-func (CodexAnalyser) Analyse(ctx context.Context, intent string, diffs map[string]string, schemaPath string) (*types.Verdict, error) {
-	prompt := BuildPrompt(intent, diffs)
+func (CodexAnalyser) Analyse(ctx context.Context, intent string, changedFiles []string, schemaPath string) (*types.Verdict, error) {
+	prompt := BuildPrompt(intent, changedFiles)
 
 	timeoutCtx, cancel := context.WithTimeout(ctx, analyseTimeout)
 	defer cancel()
@@ -78,8 +79,10 @@ func (CodexAnalyser) Analyse(ctx context.Context, intent string, diffs map[strin
 		"--ephemeral",
 		"--full-auto",
 		"--output-schema", schemaPath,
-		prompt,
+		"-",
 	)
+	// Pipe the prompt via stdin to avoid CLI arg length limits.
+	cmd.Stdin = strings.NewReader(prompt)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
@@ -117,5 +120,12 @@ func (CodexAnalyser) Analyse(ctx context.Context, intent string, diffs map[strin
 	}
 
 	logger.Info("codex completed in %s", elapsed.Round(time.Millisecond))
+	if stderr.Len() > 0 {
+		s := stderr.String()
+		if len(s) > 200 {
+			s = s[:200] + "... (truncated)"
+		}
+		logger.Debug("codex stderr: %s", s)
+	}
 	return parseVerdict(stdout.Bytes())
 }

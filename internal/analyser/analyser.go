@@ -9,11 +9,11 @@ import (
 	"github.com/zeeshans/shugoshin/internal/types"
 )
 
-// Analyser analyses a set of diffs against the stated task intent and returns
+// Analyser analyses changed files against the stated task intent and returns
 // a structured verdict. Analyse must never return a Go error — failures are
 // encoded as TIMEOUT or ERROR verdicts so the hook pipeline never crashes.
 type Analyser interface {
-	Analyse(ctx context.Context, intent string, diffs map[string]string, schemaPath string) (*types.Verdict, error)
+	Analyse(ctx context.Context, intent string, changedFiles []string, schemaPath string) (*types.Verdict, error)
 	Name() string
 }
 

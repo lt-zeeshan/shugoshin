@@ -21,7 +21,7 @@ type mockAnalyser struct {
 	called  bool
 }
 
-func (m *mockAnalyser) Analyse(_ context.Context, _ string, _ map[string]string, _ string) (*types.Verdict, error) {
+func (m *mockAnalyser) Analyse(_ context.Context, _ string, _ []string, _ string) (*types.Verdict, error) {
 	m.called = true
 	return m.verdict, nil
 }
@@ -312,7 +312,6 @@ func TestHandleAnalyse(t *testing.T) {
 				SessionID:     "s-analyse",
 				Intent:        "fix bug",
 				ChangedFiles:  []string{"main.go"},
-				Diffs:         map[string]string{"main.go": "diff content here"},
 				ResponseIndex: 0,
 			},
 			executor:   &mockAnalyser{verdict: fixedVerdict},

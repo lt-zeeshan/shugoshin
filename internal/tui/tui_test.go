@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -512,6 +513,212 @@ func TestBackendToggle(t *testing.T) {
 			}
 			if m.backend != tt.wantBackend {
 				t.Errorf("backend = %q, want %q", m.backend, tt.wantBackend)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// "x" key — toggles Resolved on focused report
+// ---------------------------------------------------------------------------
+
+func TestXKeyTogglesResolved(t *testing.T) {
+	tests := []struct {
+		name         string
+		presses      int
+		wantResolved bool
+	}{
+		{name: "one press sets Resolved=true", presses: 1, wantResolved: true},
+		{name: "two presses resets Resolved=false", presses: 2, wantResolved: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Use fresh report copies to avoid mutating the package-level fixtures.
+			r := &types.Report{
+				SessionID:     "ses-x",
+				Timestamp:     t0,
+				ResponseIndex: 0,
+				Intent:        "toggle test",
+				Verdict:       types.Verdict{Verdict: "SAFE"},
+			}
+			rs := []*types.Report{r}
+			m := New("/tmp/proj", func(string) ([]*types.Report, error) { return rs, nil })
+			m.width = 120
+			m.height = 40
+			updated, _ := m.Update(reportsLoadedMsg{reports: rs})
+			m = updated.(Model)
+
+			for i := 0; i < tt.presses; i++ {
+				updated, _ = m.Update(keyMsg("x"))
+				m = updated.(Model)
+			}
+
+			if m.filtered[0].Resolved != tt.wantResolved {
+				t.Errorf("Resolved = %v, want %v after %d press(es)", m.filtered[0].Resolved, tt.wantResolved, tt.presses)
+			}
+		})
+	}
+}
+
+func TestXKeyOnEmptyList(t *testing.T) {
+	// No reports loaded — pressing "x" must not panic.
+	m := New("/tmp/proj", func(string) ([]*types.Report, error) { return nil, nil })
+	m.width = 120
+	m.height = 40
+	updated, _ := m.Update(reportsLoadedMsg{reports: nil})
+	m = updated.(Model)
+
+	// Should complete without panic.
+	updated, _ = m.Update(keyMsg("x"))
+	_ = updated.(Model)
+}
+
+// ---------------------------------------------------------------------------
+// "d" key — removes report from m.reports and m.filtered
+// ---------------------------------------------------------------------------
+
+func TestDKeyDeletesReport(t *testing.T) {
+	// Write a real file so DeleteReport succeeds.
+	f, err := os.CreateTemp("", "shugoshin-test-*.json")
+	if err != nil {
+		t.Fatalf("creating temp file: %v", err)
+	}
+	// Write minimal valid JSON so the file exists on disk.
+	if _, err := f.WriteString("{}"); err != nil {
+		t.Fatalf("writing temp file: %v", err)
+	}
+	f.Close()
+	t.Cleanup(func() { os.Remove(f.Name()) }) // may already be deleted; ignore error
+
+	r := &types.Report{
+		SessionID:     "ses-d",
+		Timestamp:     t0,
+		ResponseIndex: 0,
+		Intent:        "delete test",
+		Verdict:       types.Verdict{Verdict: "SAFE"},
+		FilePath:      f.Name(),
+	}
+	rs := []*types.Report{r}
+	m := New("/tmp/proj", func(string) ([]*types.Report, error) { return rs, nil })
+	m.width = 120
+	m.height = 40
+	updated, _ := m.Update(reportsLoadedMsg{reports: rs})
+	m = updated.(Model)
+
+	if len(m.filtered) != 1 {
+		t.Fatalf("expected 1 report before delete, got %d", len(m.filtered))
+	}
+
+	updated, _ = m.Update(keyMsg("d"))
+	m = updated.(Model)
+
+	if len(m.filtered) != 0 {
+		t.Errorf("filtered len = %d after delete, want 0", len(m.filtered))
+	}
+	if len(m.reports) != 0 {
+		t.Errorf("reports len = %d after delete, want 0", len(m.reports))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// "h" key — toggles hideResolved filter
+// ---------------------------------------------------------------------------
+
+func TestHKeyTogglesHideResolved(t *testing.T) {
+	resolved := &types.Report{
+		SessionID:     "ses-h",
+		Timestamp:     t0,
+		ResponseIndex: 0,
+		Intent:        "resolved task",
+		Verdict:       types.Verdict{Verdict: "SAFE"},
+		Resolved:      true,
+	}
+	unresolved := &types.Report{
+		SessionID:     "ses-h",
+		Timestamp:     t1,
+		ResponseIndex: 1,
+		Intent:        "open task",
+		Verdict:       types.Verdict{Verdict: "SAFE"},
+	}
+	rs := []*types.Report{resolved, unresolved}
+	m := New("/tmp/proj", func(string) ([]*types.Report, error) { return rs, nil })
+	m.width = 120
+	m.height = 40
+	updated, _ := m.Update(reportsLoadedMsg{reports: rs})
+	m = updated.(Model)
+
+	// Before "h": both reports visible.
+	if len(m.filtered) != 2 {
+		t.Fatalf("expected 2 reports before h, got %d", len(m.filtered))
+	}
+
+	// Press "h": resolved report should be hidden.
+	updated, _ = m.Update(keyMsg("h"))
+	m = updated.(Model)
+	if !m.hideResolved {
+		t.Error("hideResolved should be true after first h press")
+	}
+	if len(m.filtered) != 1 {
+		t.Errorf("filtered len = %d after h, want 1", len(m.filtered))
+	}
+	if m.filtered[0].Resolved {
+		t.Error("filtered list should not contain resolved report when hideResolved=true")
+	}
+
+	// Press "h" again: resolved report reappears.
+	updated, _ = m.Update(keyMsg("h"))
+	m = updated.(Model)
+	if m.hideResolved {
+		t.Error("hideResolved should be false after second h press")
+	}
+	if len(m.filtered) != 2 {
+		t.Errorf("filtered len = %d after second h, want 2", len(m.filtered))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// applyFilters with hideResolved=true
+// ---------------------------------------------------------------------------
+
+func TestApplyFiltersHideResolved(t *testing.T) {
+	resolved := &types.Report{
+		SessionID: "ses-f",
+		Timestamp: t0,
+		Verdict:   types.Verdict{Verdict: "SAFE"},
+		Resolved:  true,
+	}
+	open := &types.Report{
+		SessionID: "ses-f",
+		Timestamp: t1,
+		Verdict:   types.Verdict{Verdict: "HIGH_RISK"},
+	}
+
+	tests := []struct {
+		name        string
+		hideResolved bool
+		wantCount   int
+	}{
+		{name: "hideResolved=false shows all", hideResolved: false, wantCount: 2},
+		{name: "hideResolved=true excludes resolved", hideResolved: true, wantCount: 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := Model{
+				reports:      []*types.Report{resolved, open},
+				hideResolved: tt.hideResolved,
+			}
+			applyFilters(&m)
+			if len(m.filtered) != tt.wantCount {
+				t.Errorf("filtered count = %d, want %d", len(m.filtered), tt.wantCount)
+			}
+			if tt.hideResolved {
+				for _, r := range m.filtered {
+					if r.Resolved {
+						t.Errorf("resolved report leaked into filtered list with hideResolved=true")
+					}
+				}
 			}
 		})
 	}

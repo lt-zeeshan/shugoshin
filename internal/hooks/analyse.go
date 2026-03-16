@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/zeeshans/shugoshin/internal/analyser"
@@ -19,7 +21,12 @@ import (
 // If executor is non-nil it is used directly (for tests); otherwise a new
 // analyser is created from the request's Backend field.
 func HandleAnalyse(reqPath string, executor analyser.Analyser) error {
-	defer os.Remove(reqPath)
+	// Only delete files that match the expected temp file pattern.
+	defer func() {
+		if strings.HasPrefix(filepath.Base(reqPath), "shugoshin-analyse-") {
+			os.Remove(reqPath)
+		}
+	}()
 
 	data, err := os.ReadFile(reqPath)
 	if err != nil {

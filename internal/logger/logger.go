@@ -36,7 +36,7 @@ func Init(baseDir string) {
 	f, err := os.OpenFile(
 		filepath.Join(baseDir, logFileName),
 		os.O_APPEND|os.O_CREATE|os.O_WRONLY,
-		0o644,
+		0o600,
 	)
 	if err != nil {
 		return // no-op mode — never crash

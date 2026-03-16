@@ -1,12 +1,8 @@
 # Shugoshin (守護神)
 
-Blast radius analyser for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Shugoshin hooks into Claude Code's lifecycle, invokes a configurable analysis backend after every response to analyse what changed and what else in the codebase could be affected, and presents structured verdicts through a terminal UI.
+**Autonomous blast radius analyser for [Claude Code](https://docs.anthropic.com/en/docs/claude-code).**
 
-When Claude Code fixes a bug or implements a feature, it solves the immediate problem but doesn't always reason about what else in the codebase depends on what it changed. Shugoshin fills that gap by running a second AI as a read-only reviewer after every response.
-
-Supported analysis backends:
-- **Codex CLI** (`codex exec`) — default
-- **Claude Code** (`claude -p`) — uses Claude as the analyser
+When Claude Code fixes a bug or builds a feature, it solves the immediate problem but doesn't always reason about what else depends on what it changed. Shugoshin fills that gap — it hooks into Claude Code's lifecycle and runs a second AI as a read-only reviewer after every response, producing structured verdicts about what could break.
 
 ## How it works
 
@@ -15,56 +11,44 @@ Supported analysis backends:
        │
        ▼
  ┌─────────────────────┐
- │  UserPromptSubmit    │──── capture intent ──── write to state file
- └─────────────────────┘
-       │
-       ▼
- ┌─────────────────────┐
- │  Claude Code works   │
- │  (edits files)       │
- └─────────────────────┘
-       │
-       ▼
- ┌─────────────────────┐
- │  PostToolUse         │──── track each changed file ──── append to state
- │  (per Edit/Write)    │
+ │  Claude Code works   │──── Shugoshin tracks intent + changed files
  └─────────────────────┘
        │
        ▼
  ┌─────────────────────┐     ┌──────────────────────────────────┐
- │  Stop                │────▶│  analyser (codex or claude)      │
- └─────────────────────┘     └──────────────────────────────────┘
-       │                              │
-       │                              ▼
-       │                     ┌──────────────────────┐
-       │                     │  Structured verdict   │
-       │                     │  (JSON report)        │
-       │                     └──────────────────────┘
-       ▼
- One-line summary printed to terminal
+ │  Claude Code stops   │────▶│  Background analysis (Claude/    │
+ └─────────────────────┘     │  Codex reads diffs + codebase)   │
+                              └──────────────────────────────────┘
+                                             │
+                                             ▼
+                              ┌──────────────────────┐
+                              │  JSON verdict report   │
+                              └──────────────────────┘
 ```
 
-Three Claude Code hooks run automatically. On every stop event where files were modified, the configured analysis backend generates diffs, analyses the blast radius, and writes a structured JSON verdict to `.shugoshin/reports/`. Phase 1 is purely informational — no blocking, no gating.
+Three Claude Code hooks run automatically. On every stop event where files were modified, the analysis backend reads the diffs, searches for affected callers, and writes a structured JSON verdict. Analysis runs in the background — it never blocks your workflow.
 
-### Verdicts
+## Verdicts
 
 | Verdict | Meaning |
 |---------|---------|
-| **SAFE** | Changes are contained, no unintended side effects detected |
+| **SAFE** | Changes are contained, no unintended side effects |
 | **REVIEW_NEEDED** | Changes may affect other parts of the codebase |
-| **HIGH_RISK** | Changes to shared symbols with wide blast radius |
-| **TIMEOUT** | Analysis backend exceeded the 240-second timeout |
-| **ERROR** | Analysis backend crashed or returned invalid output |
+| **HIGH_RISK** | Shared symbols with wide blast radius — review before proceeding |
+| **TIMEOUT** | Analysis exceeded the 10-minute timeout |
+| **ERROR** | Backend crashed or returned invalid output |
 
-## Prerequisites
+## Getting started
+
+### Prerequisites
 
 - Go 1.24+
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (hooks are configured automatically)
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
 - At least one analysis backend:
-  - [Codex CLI](https://github.com/openai/codex) installed and authenticated (default), or
-  - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (`claude` command available in PATH)
+  - **Claude Code CLI** (`claude` in PATH) — default, no extra setup
+  - **[Codex CLI](https://github.com/openai/codex)** — alternative backend
 
-## Install
+### Install
 
 ```bash
 go install github.com/lt-zeeshan/shugoshin/cmd/shugoshin@latest
@@ -78,31 +62,20 @@ cd shugoshin
 go install ./cmd/shugoshin/
 ```
 
-## Quick start
+### Set up in your project
 
 ```bash
 cd your-project
 shugoshin init
 ```
 
-This will:
-1. Create `.shugoshin/` directory structure (schemas, state, reports)
-2. Write the verdict JSON schema for structured output
-3. Write `.shugoshin/settings.json` with default backend (`claude`)
-4. Merge hooks into `.claude/settings.json` (tagged with `_shugoshin: true` for clean removal)
-5. Add `.shugoshin/state/` to `.gitignore`
-
-Now use Claude Code normally. After every response that modifies files, you'll see a one-line verdict summary in the transcript:
+This creates `.shugoshin/` (schemas, state, reports), writes default settings, merges hooks into `.claude/settings.json`, and updates `.gitignore`. Now use Claude Code normally — after every response that modifies files, you'll see:
 
 ```
-[shugoshin] SAFE: Changes are contained to the auth module with no external callers affected
+[shugoshin] analysing 3 changed files in background (backend: claude)...
 ```
 
-```
-[shugoshin] HIGH_RISK: Token validator used by 6 routes, 2 have no test coverage
-```
-
-## Viewing reports
+### View reports
 
 ```bash
 shugoshin
@@ -112,66 +85,65 @@ Opens an interactive TUI:
 
 ```
 ┌─ Shugoshin — my-project ─────────────────────────────────────────┐
-│ Session: all sessions   Filter: ALL   Backend: claude   3 reports  │
+│ Session: all sessions   Filter: ALL   Backend: claude   4 reports │
+│ ⟳ Analysing 3 files in background...                             │
 ├───────────────────────────────────────────────────────────────────┤
 │  ●  SAFE          fix the null check in user.go          13:02   │
 │  ▲  REVIEW        refactor auth middleware                13:15   │
-│  ●  SAFE          add unit test for login flow            13:28   │
+│  ✓  SAFE          add unit test for login flow            13:28   │
 │> ■  HIGH RISK     modify shared token validator           13:41   │
-├───────────────────────────────────────────────────────────────────┤
-│ Verdict:  HIGH RISK                                               │
-│ Intent match: YES                                                 │
-│ Summary:  Token validator used by 6 routes, 2 have no test cover  │
-│                                                                   │
-│ Affected:                                                         │
-│   GetToken()     api/routes/users.go:42  api/routes/auth.go:87    │
-│   ValidateJWT()  middleware/session.go:14  (HIGH)                  │
-│                                                                   │
-│ Reasoning:                                                        │
-│   The shared token validator was modified to reject expired       │
-│   tokens more aggressively. All 6 routes that call ValidateJWT() │
-│   may now reject tokens they previously accepted...               │
-│                                                                   │
-│ Changed files: auth/token.go  middleware/session.go               │
 └───────────────────────────────────────────────────────────────────┘
-  ↑↓ navigate   enter expand   s session   f filter   b backend   r reload   q quit
+  ↑↓ navigate  enter expand  x resolve  d delete  h hide resolved
+  s session  f filter  b backend  r reload  q quit
 ```
 
-### Keyboard
+### Keyboard shortcuts
 
 | Key | Action |
 |-----|--------|
-| `↑` / `k` | Navigate up (or scroll detail pane when expanded) |
-| `↓` / `j` | Navigate down (or scroll detail pane when expanded) |
-| `Enter` | Expand/collapse detail pane |
-| `Esc` | Close detail pane |
-| `s` | Cycle session filter (all sessions → session 1 → session 2 → ...) |
-| `f` | Cycle verdict filter (ALL → HIGH_RISK only → REVIEW_NEEDED+ → ALL) |
-| `b` | Cycle analysis backend (claude → codex → claude), persists to settings |
+| `↑`/`k`, `↓`/`j` | Navigate list (or scroll detail pane) |
+| `Enter` | Expand/collapse detail view |
+| `Esc`, `Backspace` | Close detail view |
+| `x` | Toggle resolved (marks a concern as addressed) |
+| `d` | Delete report from disk |
+| `h` | Hide/show resolved reports |
+| `s` | Cycle session filter |
+| `f` | Cycle verdict filter (ALL → HIGH_RISK → REVIEW_NEEDED+ → ALL) |
+| `b` | Cycle backend (claude → codex), persists to settings |
 | `r` | Reload reports from disk |
 | `q` | Quit |
 
 ## Commands
 
-| Command | Description |
+| Command | What it does |
 |---------|-------------|
-| `shugoshin` | Launch the TUI to browse reports |
-| `shugoshin init` | Set up Shugoshin in the current project |
-| `shugoshin cleanup` | Clear state and reports, keep hooks active |
-| `shugoshin deinit` | Remove Shugoshin entirely (hooks, dirs, gitignore) |
+| `shugoshin` | Open the TUI |
+| `shugoshin init` | Set up hooks and directory structure |
+| `shugoshin cleanup` | Clear state and reports, keep hooks |
+| `shugoshin deinit` | Remove everything (hooks, dirs, gitignore entries) |
 
-`shugoshin hook {submit,posttool,stop}` are internal commands invoked by Claude Code hooks — not meant for direct use.
+## Switching backends
+
+The analysis backend is configured in `.shugoshin/settings.json`:
+
+```json
+{
+  "backend": "claude"
+}
+```
+
+Toggle with `b` in the TUI, or edit the file directly. Supported: `"claude"` (default), `"codex"`.
+
+**Claude backend** — invokes `claude -p` with structured JSON output. Restricted to read-only tools (file reading, git diff/log/show/blame). No extra setup needed.
+
+**Codex backend** — invokes `codex exec` with a lean CODEX_HOME (no MCP servers). Auth is copied from `~/.codex/auth.json`. Requires Codex CLI installed and authenticated.
 
 ## Example report
-
-Each verdict is stored as a JSON file in `.shugoshin/reports/{session_id}/`:
 
 ```json
 {
   "session_id": "abc123",
-  "cwd": "/path/to/project",
   "timestamp": "2026-03-14T13:41:00Z",
-  "response_index": 3,
   "intent": "modify shared token validator",
   "changed_files": ["auth/token.go", "middleware/session.go"],
   "verdict": {
@@ -190,110 +162,52 @@ Each verdict is stored as a JSON file in `.shugoshin/reports/{session_id}/`:
 }
 ```
 
-Reports can be committed as an audit trail or gitignored — your choice.
-
-## Backend configuration
-
-The analysis backend is set in `.shugoshin/settings.json`:
-
-```json
-{
-  "backend": "claude"
-}
-```
-
-Supported values: `"claude"` (default), `"codex"`. Toggle in the TUI with `b`, or edit the file directly.
-
-### Codex backend
-
-Shugoshin uses a lean CODEX_HOME at `$TMPDIR/shugoshin-codex` with no MCP servers configured. This skips MCP server startup (which can add several seconds per analysis) since blast radius analysis only needs Codex's native file reading and code search. Auth is symlinked from `~/.codex/auth.json`. Your normal Codex usage keeps all MCP servers — only Shugoshin's automated analysis runs lean.
-
-### Claude backend
-
-Invokes `claude -p` with `--output-format json` and `--json-schema` for structured output. No special configuration needed — uses your existing Claude Code authentication.
-
 ## File layout
 
 ```
 .shugoshin/                     Created by `shugoshin init`
-  settings.json                 Backend selection (codex or claude)
-  schemas/verdict.json          JSON Schema for structured output
-  state/{session_id}.json       Ephemeral per-session state (gitignored)
+  settings.json                 Backend selection
+  schemas/verdict.json          JSON schema for structured output
+  state/{session_id}.json       Per-session state (gitignored)
   reports/{session_id}/         Verdict reports
-    {timestamp}-{index}.json    One report per Claude Code response
-  debug.log                     Hook and analyser logs
-```
-
-## Project structure
-
-```
-cmd/shugoshin/main.go           CLI entry point (Cobra)
-internal/
-  types/types.go                Shared structs (HookPayload, SessionState, Verdict, Report)
-  state/manager.go              Atomic session state read/write
-  reports/
-    writer.go                   Write verdict JSON to reports dir
-    reader.go                   Read and list reports for TUI
-  analyser/
-    analyser.go                 Analyser interface, New() factory, parseVerdict()
-    codex.go                    CodexAnalyser — Codex CLI backend (240s timeout)
-    claude.go                   ClaudeAnalyser — Claude Code backend
-    prompt.go                   Shared analysis prompt builder
-    schema.go                   Embedded verdict JSON schema
-  config/
-    config.go                   Settings Load/Save (.shugoshin/settings.json)
-  hooks/
-    submit.go                   UserPromptSubmit — capture intent
-    posttool.go                 PostToolUse — track changed files
-    stop.go                     Stop — orchestrate analysis pipeline
-    analyse.go                  Background analysis subprocess handler
-  init/
-    init.go                     shugoshin init (creates settings.json)
-    deinit.go                   shugoshin deinit
-    cleanup.go                  shugoshin cleanup
-    settings.go                 .claude/settings.json merge/remove logic
-  logger/logger.go              File-based debug logger (never crashes)
-  tui/
-    model.go                    Bubble Tea model (includes backend field)
-    update.go                   Keyboard and event handling (b key for backend)
-    view.go                     Rendering with Lip Gloss styling
+    {timestamp}-{index}.json    One report per response
+  debug.log                     Debug logs
 ```
 
 ## Debugging
 
-Logs are written to `.shugoshin/debug.log` in append mode. Every hook invocation, state change, Codex invocation (with duration), and error is logged:
+Check `.shugoshin/debug.log` — every hook invocation, backend call (with duration), and error is logged. Example:
 
 ```
-2026-03-14T13:02:10.283 [INFO] handling submit hook session_id=abc123
-2026-03-14T13:02:10.284 [DEBUG] saved intent: "fix the null pointer bug in user.go"
-2026-03-14T13:02:15.100 [INFO] handling posttool hook session_id=abc123 tool=Edit
-2026-03-14T13:02:15.101 [DEBUG] tracked file change: internal/user/user.go
-2026-03-14T13:02:20.500 [INFO] handling stop hook session_id=abc123
-2026-03-14T13:02:20.502 [INFO] generating diff for internal/user/user.go
-2026-03-14T13:02:20.510 [INFO] invoking codex analysis files=1
-2026-03-14T13:02:20.511 [INFO] running codex exec
-2026-03-14T13:02:35.200 [INFO] codex completed in 14.689s
-2026-03-14T13:02:35.201 [INFO] codex verdict: SAFE
-2026-03-14T13:02:35.203 [INFO] report written to .shugoshin/reports/abc123/20260314T130235-003.json
-2026-03-14T13:02:35.204 [INFO] stop hook complete
+[INFO]  handling stop hook session_id=abc123
+[INFO]  spawned background analysis pid=12345 file_count=2 backend=claude
+[INFO]  claude completed in 54.926s
+[INFO]  claude verdict: SAFE summary="Changes are contained..."
+[INFO]  report written to .shugoshin/reports/abc123/20260314T130235-003.json
 ```
-
-If hooks aren't producing reports, check this file first.
 
 ## Limitations
 
-- **Phase 1 is informational only** — Shugoshin reports findings but does not block Claude Code from proceeding, even on HIGH_RISK verdicts.
-- **Requires at least one backend** — analysis depends on either `codex` or `claude` being available in PATH and authenticated.
-- **10-minute timeout** — complex analyses may hit the timeout and produce a TIMEOUT verdict. The timeout prevents hooks from blocking Claude Code indefinitely.
-- **No incremental analysis** — each stop event analyses all changed files from scratch, not incrementally from the previous verdict.
-- **New session required** — after installing or updating the binary, you must restart your Claude Code session for hooks to pick up the new version.
+- **Informational only (Phase 1)** — verdicts are advisory, Shugoshin does not block Claude Code
+- **Requires a backend CLI** — either `claude` or `codex` must be in PATH and authenticated
+- **10-minute timeout** — very large changes may time out
+- **Not incremental** — each analysis starts fresh from the current diffs
+- **Binary updates need a session restart** — Claude Code caches hook binary paths
 
-## Roadmap (Phase 2)
+## Roadmap
 
-- Blocking mode — stop hook returns `decision: block` to force Claude Code to re-examine HIGH_RISK changes
-- Configurable risk threshold for blocking
-- Additional analysis backends (Gemini CLI, local models, etc.)
-- Report export to markdown for PR descriptions
+- Blocking mode for HIGH_RISK verdicts
+- Configurable risk thresholds
+- Additional backends (Gemini, local models)
+- Report export to markdown for PRs
+
+## Security
+
+- Analysis backends run with restricted, read-only permissions
+- No secrets are stored in source or committed to git
+- Hook request files are created with `0o600` permissions
+- Debug logs are owner-readable only
+- Codex auth is copied (never symlinked) to prevent corruption
 
 ## License
 

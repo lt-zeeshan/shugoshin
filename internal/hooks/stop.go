@@ -117,6 +117,7 @@ func HandleStop(r io.Reader) (retErr error) {
 		return nil
 	}
 	reqPath := reqFile.Name()
+	_ = os.Chmod(reqPath, 0o600)
 	if _, err := reqFile.Write(reqData); err != nil {
 		reqFile.Close()
 		logger.Error("writing analyse request: %v", err)

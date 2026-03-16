@@ -331,7 +331,7 @@ func TestHandleAnalyse(t *testing.T) {
 			if err != nil {
 				t.Fatalf("marshal request: %v", err)
 			}
-			reqFile := filepath.Join(t.TempDir(), "req.json")
+			reqFile := filepath.Join(t.TempDir(), "shugoshin-analyse-test.json")
 			if err := os.WriteFile(reqFile, reqData, 0o644); err != nil {
 				t.Fatalf("write request file: %v", err)
 			}

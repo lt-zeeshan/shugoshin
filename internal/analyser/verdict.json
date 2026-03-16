@@ -15,7 +15,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["symbol", "locations", "risk"],
+        "required": ["symbol", "locations", "risk", "category"],
         "additionalProperties": false,
         "properties": {
           "symbol": { "type": "string" },
@@ -26,6 +26,11 @@
           "risk": {
             "type": "string",
             "enum": ["LOW", "MEDIUM", "HIGH"]
+          },
+          "category": {
+            "type": "string",
+            "enum": ["behavior", "data", "security", "performance", "operability"],
+            "description": "Type of risk: behavior (logic/contract change), data (serialization/format), security (permissions/validation), performance (resource/latency), operability (config/env/platform)"
           }
         }
       }
@@ -37,6 +42,35 @@
     "reasoning": {
       "type": "string",
       "description": "Full explanation of the blast radius analysis"
+    },
+    "scope_creep": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "List of changes that go beyond the stated intent. Empty if none."
+    },
+    "missing_from_intent": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Parts of the stated intent that were not addressed. Empty if fully implemented."
+    },
+    "suggested_tests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "scenario"],
+        "additionalProperties": false,
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "File path where the test should be added (e.g. internal/auth/auth_test.go)"
+          },
+          "scenario": {
+            "type": "string",
+            "description": "One-line description of what the test should verify"
+          }
+        }
+      },
+      "description": "Highest-value regression tests to validate or disprove the findings. Empty if verdict is SAFE."
     }
   }
 }

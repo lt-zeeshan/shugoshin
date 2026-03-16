@@ -260,15 +260,52 @@ func renderDetail(m Model, inner int) string {
 		lines = append(lines, " "+styleLabel.Render("Affected:"))
 		for _, a := range r.Verdict.AffectedAreas {
 			riskStr := riskStyle(a.Risk).Render("(" + a.Risk + ")")
+			catStr := ""
+			if a.Category != "" {
+				catStr = " " + styleDim.Render("["+a.Category+"]")
+			}
 			lines = append(lines, "")
 			lines = append(lines,
-				fmt.Sprintf("   %s  %s",
+				fmt.Sprintf("   %s  %s%s",
 					styleBold.Render(a.Symbol),
 					riskStr,
+					catStr,
 				),
 			)
 			for _, loc := range a.Locations {
 				lines = append(lines, "     "+styleDim.Render(loc))
+			}
+		}
+		lines = append(lines, "")
+	}
+
+	// Intent drift.
+	if len(r.Verdict.ScopeCreep) > 0 {
+		lines = append(lines, " "+styleLabel.Render("Scope creep:"))
+		for _, s := range r.Verdict.ScopeCreep {
+			for _, wl := range wordWrap("- "+s, contentWidth-3) {
+				lines = append(lines, "   "+styleReview.Render(wl))
+			}
+		}
+		lines = append(lines, "")
+	}
+	if len(r.Verdict.MissingFromIntent) > 0 {
+		lines = append(lines, " "+styleLabel.Render("Missing from intent:"))
+		for _, s := range r.Verdict.MissingFromIntent {
+			for _, wl := range wordWrap("- "+s, contentWidth-3) {
+				lines = append(lines, "   "+styleReview.Render(wl))
+			}
+		}
+		lines = append(lines, "")
+	}
+
+	// Suggested tests.
+	if len(r.Verdict.SuggestedTests) > 0 {
+		lines = append(lines, " "+styleLabel.Render("Suggested tests:"))
+		for _, st := range r.Verdict.SuggestedTests {
+			lines = append(lines, "   "+styleBold.Render(st.File))
+			for _, wl := range wordWrap(st.Scenario, contentWidth-5) {
+				lines = append(lines, "     "+styleDim.Render(wl))
 			}
 		}
 		lines = append(lines, "")

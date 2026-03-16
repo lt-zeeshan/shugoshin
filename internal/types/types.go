@@ -27,14 +27,23 @@ type AffectedArea struct {
 	Symbol    string   `json:"symbol"`
 	Locations []string `json:"locations"`
 	Risk      string   `json:"risk"`
+	Category  string   `json:"category,omitempty"`
+}
+
+type SuggestedTest struct {
+	File     string `json:"file"`
+	Scenario string `json:"scenario"`
 }
 
 type Verdict struct {
-	Verdict       string         `json:"verdict"`
-	Summary       string         `json:"summary"`
-	AffectedAreas []AffectedArea `json:"affected_areas"`
-	IntentMatch   bool           `json:"intent_match"`
-	Reasoning     string         `json:"reasoning"`
+	Verdict           string         `json:"verdict"`
+	Summary           string         `json:"summary"`
+	AffectedAreas     []AffectedArea `json:"affected_areas"`
+	IntentMatch       bool           `json:"intent_match"`
+	Reasoning         string         `json:"reasoning"`
+	ScopeCreep        []string       `json:"scope_creep,omitempty"`
+	MissingFromIntent []string       `json:"missing_from_intent,omitempty"`
+	SuggestedTests    []SuggestedTest `json:"suggested_tests,omitempty"`
 }
 
 type Report struct {

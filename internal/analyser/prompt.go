@@ -58,17 +58,25 @@ func BuildPrompt(intent string, changedFiles []string) string {
 	b.WriteString("   - Security regressions (broadened permissions, weakened validation,\n")
 	b.WriteString("     secrets in logs, unsafe file permissions)\n\n")
 
-	b.WriteString("5. INTENT MATCH:\n")
+	b.WriteString("5. INTENT DRIFT:\n")
 	b.WriteString("   - Does the change do what was asked and ONLY what was asked?\n")
-	b.WriteString("   - Flag scope creep (changes beyond the intent) and partial\n")
-	b.WriteString("     implementation (intent not fully addressed).\n\n")
+	b.WriteString("   - List any scope creep in `scope_creep` (changes beyond the intent).\n")
+	b.WriteString("   - List gaps in `missing_from_intent` (parts of intent not addressed).\n\n")
+
+	b.WriteString("6. TEST GAPS:\n")
+	b.WriteString("   - For each finding, suggest the highest-value regression test that would\n")
+	b.WriteString("     confirm or disprove the risk. Put them in `suggested_tests` with the\n")
+	b.WriteString("     file path and a one-line scenario description.\n\n")
 
 	b.WriteString("DO NOT waste time verifying that function signatures match their call sites —\n")
 	b.WriteString("Claude Code already checked that. Focus on the behavioral and operational\n")
 	b.WriteString("risks listed above.\n\n")
 
+	b.WriteString("RESPONSE FORMAT:\n")
 	b.WriteString("Respond ONLY with a JSON object matching the provided schema.\n")
-	b.WriteString("For affected_areas, cite specific file:line locations and risk level.\n")
+	b.WriteString("For each affected_area, include a `category` from: behavior, data, security,\n")
+	b.WriteString("performance, operability.\n")
+	b.WriteString("Cite specific file:line locations and risk level.\n")
 	b.WriteString("If everything is genuinely safe, say so — don't invent problems.")
 
 	return b.String()

@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zeeshans/shugoshin/internal/analyser"
-	"github.com/zeeshans/shugoshin/internal/logger"
-	"github.com/zeeshans/shugoshin/internal/reports"
-	"github.com/zeeshans/shugoshin/internal/tracking"
-	"github.com/zeeshans/shugoshin/internal/types"
+	"github.com/lt-zeeshan/shugoshin/internal/analyser"
+	"github.com/lt-zeeshan/shugoshin/internal/logger"
+	"github.com/lt-zeeshan/shugoshin/internal/reports"
+	"github.com/lt-zeeshan/shugoshin/internal/tracking"
+	"github.com/lt-zeeshan/shugoshin/internal/types"
 )
 
 // HandleAnalyse runs the analysis from a serialised AnalyseRequest file.

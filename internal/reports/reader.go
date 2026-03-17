@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/zeeshans/shugoshin/internal/types"
+	"github.com/lt-zeeshan/shugoshin/internal/types"
 )
 
 // parseReportFile reads and unmarshals a single JSON report file.

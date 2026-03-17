@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/zeeshans/shugoshin/internal/types"
+	"github.com/lt-zeeshan/shugoshin/internal/types"
 )
 
 const timestampLayout = "20060102T150405"

@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/zeeshans/shugoshin/internal/analyser"
-	"github.com/zeeshans/shugoshin/internal/logger"
+	"github.com/lt-zeeshan/shugoshin/internal/analyser"
+	"github.com/lt-zeeshan/shugoshin/internal/logger"
 )
 
 // Deinit reverses the effects of Init for the project at projectRoot:

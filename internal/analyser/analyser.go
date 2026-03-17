@@ -6,7 +6,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/zeeshans/shugoshin/internal/types"
+	"github.com/lt-zeeshan/shugoshin/internal/types"
 )
 
 // Analyser analyses changed files against the stated task intent and returns

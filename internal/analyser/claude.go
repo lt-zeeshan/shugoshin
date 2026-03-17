@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zeeshans/shugoshin/internal/logger"
-	"github.com/zeeshans/shugoshin/internal/types"
+	"github.com/lt-zeeshan/shugoshin/internal/logger"
+	"github.com/lt-zeeshan/shugoshin/internal/types"
 )
 
 // ClaudeAnalyser invokes the Claude Code CLI as a subprocess.

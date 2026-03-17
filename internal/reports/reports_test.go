@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zeeshans/shugoshin/internal/reports"
-	"github.com/zeeshans/shugoshin/internal/types"
+	"github.com/lt-zeeshan/shugoshin/internal/reports"
+	"github.com/lt-zeeshan/shugoshin/internal/types"
 )
 
 // makeReport is a test helper that builds a minimal types.Report.

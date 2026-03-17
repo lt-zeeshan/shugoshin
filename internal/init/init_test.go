@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	shugoshin_init "github.com/zeeshans/shugoshin/internal/init"
+	shugoshin_init "github.com/lt-zeeshan/shugoshin/internal/init"
 )
 
 // ---- helpers ----------------------------------------------------------------

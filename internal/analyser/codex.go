@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zeeshans/shugoshin/internal/logger"
-	"github.com/zeeshans/shugoshin/internal/types"
+	"github.com/lt-zeeshan/shugoshin/internal/logger"
+	"github.com/lt-zeeshan/shugoshin/internal/types"
 )
 
 const analyseTimeout = 600 * time.Second

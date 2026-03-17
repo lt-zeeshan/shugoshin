@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/zeeshans/shugoshin/internal/state"
-	"github.com/zeeshans/shugoshin/internal/types"
+	"github.com/lt-zeeshan/shugoshin/internal/state"
+	"github.com/lt-zeeshan/shugoshin/internal/types"
 )
 
 func TestLoad(t *testing.T) {

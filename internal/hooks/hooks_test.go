@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zeeshans/shugoshin/internal/analyser"
-	"github.com/zeeshans/shugoshin/internal/state"
-	"github.com/zeeshans/shugoshin/internal/types"
+	"github.com/lt-zeeshan/shugoshin/internal/analyser"
+	"github.com/lt-zeeshan/shugoshin/internal/state"
+	"github.com/lt-zeeshan/shugoshin/internal/types"
 )
 
 // mockAnalyser is a test double for analyser.Analyser that returns a fixed verdict.

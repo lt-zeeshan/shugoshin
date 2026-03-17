@@ -1,4 +1,4 @@
-module github.com/zeeshans/shugoshin
+module github.com/lt-zeeshan/shugoshin
 
 go 1.24.0
 

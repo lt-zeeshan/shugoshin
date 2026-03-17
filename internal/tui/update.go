@@ -2,11 +2,11 @@ package tui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/zeeshans/shugoshin/internal/analyser"
-	"github.com/zeeshans/shugoshin/internal/config"
-	"github.com/zeeshans/shugoshin/internal/reports"
-	"github.com/zeeshans/shugoshin/internal/tracking"
-	"github.com/zeeshans/shugoshin/internal/types"
+	"github.com/lt-zeeshan/shugoshin/internal/analyser"
+	"github.com/lt-zeeshan/shugoshin/internal/config"
+	"github.com/lt-zeeshan/shugoshin/internal/reports"
+	"github.com/lt-zeeshan/shugoshin/internal/tracking"
+	"github.com/lt-zeeshan/shugoshin/internal/types"
 )
 
 // verdictFilterCycle defines the ordered sequence for cycling the verdict filter.

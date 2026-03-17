@@ -10,11 +10,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/zeeshans/shugoshin/internal/hooks"
-	initpkg "github.com/zeeshans/shugoshin/internal/init"
-	"github.com/zeeshans/shugoshin/internal/logger"
-	"github.com/zeeshans/shugoshin/internal/reports"
-	"github.com/zeeshans/shugoshin/internal/tui"
+	"github.com/lt-zeeshan/shugoshin/internal/hooks"
+	initpkg "github.com/lt-zeeshan/shugoshin/internal/init"
+	"github.com/lt-zeeshan/shugoshin/internal/logger"
+	"github.com/lt-zeeshan/shugoshin/internal/reports"
+	"github.com/lt-zeeshan/shugoshin/internal/tui"
 )
 
 func main() {

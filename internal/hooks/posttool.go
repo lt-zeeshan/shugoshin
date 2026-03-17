@@ -5,9 +5,9 @@ import (
 	"io"
 	"path/filepath"
 
-	"github.com/zeeshans/shugoshin/internal/logger"
-	"github.com/zeeshans/shugoshin/internal/state"
-	"github.com/zeeshans/shugoshin/internal/types"
+	"github.com/lt-zeeshan/shugoshin/internal/logger"
+	"github.com/lt-zeeshan/shugoshin/internal/state"
+	"github.com/lt-zeeshan/shugoshin/internal/types"
 )
 
 // HandlePostTool processes a PostToolUse hook event. It reads the payload from

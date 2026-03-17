@@ -3,9 +3,9 @@ package tui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/zeeshans/shugoshin/internal/config"
-	"github.com/zeeshans/shugoshin/internal/tracking"
-	"github.com/zeeshans/shugoshin/internal/types"
+	"github.com/lt-zeeshan/shugoshin/internal/config"
+	"github.com/lt-zeeshan/shugoshin/internal/tracking"
+	"github.com/lt-zeeshan/shugoshin/internal/types"
 )
 
 // ReportLoader is a function that loads all reports from a base directory.

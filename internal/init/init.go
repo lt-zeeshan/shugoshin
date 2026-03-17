@@ -5,9 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/zeeshans/shugoshin/internal/analyser"
-	"github.com/zeeshans/shugoshin/internal/config"
-	"github.com/zeeshans/shugoshin/internal/logger"
+	"github.com/lt-zeeshan/shugoshin/internal/analyser"
+	"github.com/lt-zeeshan/shugoshin/internal/config"
+	"github.com/lt-zeeshan/shugoshin/internal/logger"
 )
 
 // shugoshinDirs are the subdirectories created under .shugoshin/ on init.

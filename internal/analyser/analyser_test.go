@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zeeshans/shugoshin/internal/types"
+	"github.com/lt-zeeshan/shugoshin/internal/types"
 )
 
 func TestNew(t *testing.T) {

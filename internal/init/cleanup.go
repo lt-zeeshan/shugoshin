@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/zeeshans/shugoshin/internal/logger"
+	"github.com/lt-zeeshan/shugoshin/internal/logger"
 )
 
 // Cleanup removes and recreates .shugoshin/state/ and .shugoshin/reports/ for

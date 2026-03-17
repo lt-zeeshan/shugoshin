@@ -68,10 +68,12 @@ func Init(projectRoot string) error {
 	fmt.Println("Added .shugoshin/state/ to .gitignore")
 
 	if err := analyser.SetupLeanHome(); err != nil {
-		return fmt.Errorf("setting up codex home: %w", err)
+		logger.Info("skipping codex home setup: %v", err)
+		fmt.Println("Skipped Codex home setup (codex not installed or not authenticated)")
+	} else {
+		logger.Info("created lean codex home at %s", analyser.LeanHomePath())
+		fmt.Printf("Created lean Codex home at %s (no MCP servers)\n", analyser.LeanHomePath())
 	}
-	logger.Info("created lean codex home at %s", analyser.LeanHomePath())
-	fmt.Printf("Created lean Codex home at %s (no MCP servers)\n", analyser.LeanHomePath())
 
 	logger.Info("init complete")
 	fmt.Println("Shugoshin initialised successfully.")

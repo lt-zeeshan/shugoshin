@@ -54,10 +54,17 @@ Three Claude Code hooks run automatically. On every stop event where files were 
 go install github.com/lt-zeeshan/shugoshin/cmd/shugoshin@latest
 ```
 
+If `shugoshin` gives "command not found", add Go's bin directory to your PATH:
+
+```bash
+echo 'export PATH="$PATH:$(go env GOPATH)/bin"' >> ~/.zshrc
+source ~/.zshrc
+```
+
 Or build from source:
 
 ```bash
-git clone https://github.com/zeeshans/shugoshin.git
+git clone https://github.com/lt-zeeshan/shugoshin.git
 cd shugoshin
 go install ./cmd/shugoshin/
 ```
@@ -69,7 +76,9 @@ cd your-project
 shugoshin init
 ```
 
-This creates `.shugoshin/` (schemas, state, reports), writes default settings, merges hooks into `.claude/settings.json`, and updates `.gitignore`. Now use Claude Code normally — after every response that modifies files, you'll see:
+This creates `.shugoshin/` (schemas, state, reports), writes default settings, merges hooks into `.claude/settings.json`, and updates `.gitignore`. Codex setup is optional — if you don't have Codex installed, init skips it and uses Claude as the default backend.
+
+Now use Claude Code normally — after every response that modifies files, you'll see:
 
 ```
 [shugoshin] analysing 3 changed files in background (backend: claude)...
